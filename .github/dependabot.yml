@@ -6,10 +6,14 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # One PR for the routine patch churn; anything major still lands on its
-      # own so it gets read properly.
+      # Routine churn in one PR.
       patch-and-minor:
         update-types: [minor, patch]
+      # Majors in a second PR rather than one each. They usually need code
+      # changes -- six separate red PRs on day one taught us that -- so they
+      # are worth seeing together and scheduling as a single piece of work.
+      major:
+        update-types: [major]
 
   - package-ecosystem: github-actions
     directory: /
