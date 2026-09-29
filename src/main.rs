@@ -70,12 +70,16 @@ fn restore_default_sigpipe() {
 fn restore_default_sigpipe() {}
 
 async fn run() -> i32 {
-    let cli = Cli::parse();
-
     // Sweep up a binary an earlier update had to leave behind. Only Windows
     // can produce one (a running image cannot be deleted, only renamed), and
     // it is a no-op everywhere else.
+    //
+    // Before `Cli::parse`, deliberately: clap exits inside `parse` for
+    // `--version` and `--help`, and those are exactly what someone runs
+    // straight after an update to check it worked.
     spotify_agent::update::install::cleanup_leftovers();
+
+    let cli = Cli::parse();
 
     // `completions` must work before any config exists.
     if let Some(Command::Completions { shell }) = &cli.command {

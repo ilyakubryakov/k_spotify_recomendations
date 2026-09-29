@@ -456,21 +456,30 @@ pub fn cleanup_leftovers() {
     #[cfg(windows)]
     {
         let Ok(exe) = current_exe() else { return };
-        let Some(dir) = exe.parent().map(Path::to_path_buf) else {
+        let (Some(dir), Some(name)) = (
+            exe.parent(),
+            exe.file_name().map(|n| n.to_string_lossy().to_string()),
+        ) else {
             return;
         };
-        let Some(name) = exe.file_name().map(|n| n.to_string_lossy().to_string()) else {
-            return;
-        };
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            return;
-        };
-        let stale = format!("{name}.old");
-        for entry in entries.flatten() {
-            let found = entry.file_name().to_string_lossy().to_string();
-            if found.starts_with(&stale) {
-                let _ = std::fs::remove_file(entry.path());
-            }
+        sweep_leftovers(dir, &name);
+    }
+}
+
+/// Delete `<name>.old` and any pid-suffixed sibling in `dir`.
+///
+/// Split from [`cleanup_leftovers`] so it can be tested: the caller resolves
+/// `current_exe()`, which a test cannot substitute. A file still held open by
+/// another running instance simply survives to the next sweep.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn sweep_leftovers(dir: &Path, name: &str) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let stale = format!("{name}.old");
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&stale) {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
 }
@@ -552,6 +561,81 @@ mod tests {
         // "…-linux-gnu" is a prefix of "…-linux-gnu.tar.gz"; a sloppy
         // `starts_with` would verify the wrong file against it.
         verify_checksum(&sums, "spotify-agent-x86_64-unknown-linux", archive).expect_err("refuses");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_binary_is_found_inside_a_release_zip() {
+        // The Windows half of extraction had no coverage at all until a real
+        // run on a VM went looking for it: the unix tests build a tar.gz, and
+        // `cargo test` on Windows simply skipped them.
+        let body = b"MZ not really an exe";
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file(format!("spotify-agent-fake/{BINARY_NAME}"), options)
+            .expect("entry");
+        {
+            use std::io::Write;
+            zip.write_all(body).expect("write");
+        }
+        let archive = zip.finish().expect("finish").into_inner();
+
+        assert_eq!(extract_binary(&archive).expect("extracts"), body);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_zip_without_the_binary_is_an_error_not_an_empty_install() {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("spotify-agent-fake/README.md", options)
+            .expect("entry");
+        {
+            use std::io::Write;
+            zip.write_all(b"not the binary").expect("write");
+        }
+        let archive = zip.finish().expect("finish").into_inner();
+
+        assert!(extract_binary(&archive).is_err());
+    }
+
+    #[test]
+    fn the_sweep_removes_old_binaries_and_nothing_else() {
+        // Verified against the real thing on a Windows VM: after a swap the
+        // previous image survives as `<name>.old` because a mapped image
+        // cannot be deleted by the process that is running it.
+        let dir = std::env::temp_dir().join(format!("sa-sweep-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        for name in [
+            "spotify-agent.exe",
+            "spotify-agent.exe.old",
+            "spotify-agent.exe.old-4220",
+            "spotify-agent.exe.config",
+            "something-else",
+        ] {
+            std::fs::write(dir.join(name), b"x").expect("write");
+        }
+
+        sweep_leftovers(&dir, "spotify-agent.exe");
+
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .expect("read dir")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            vec![
+                "something-else".to_string(),
+                "spotify-agent.exe".to_string(),
+                "spotify-agent.exe.config".to_string(),
+            ]
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[cfg(not(windows))]
