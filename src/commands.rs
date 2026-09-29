@@ -146,18 +146,19 @@ pub async fn status(config: Arc<Config>, as_json: bool, color: bool) -> Result<(
     // Build the Spotify handle only when it can succeed; a missing client_id
     // must not turn `status` — the command you run to find that out — into an
     // error.
-    let (authorized, token_expiry, cache) = if has_client_id {
+    let (authorized, token_expiry, cache, missing_scopes) = if has_client_id {
         match Engine::build_spotify_only(Arc::clone(&config)).await {
             Ok(handle) => {
                 let authorized = handle.auth.is_authorized().await;
                 let expiry = handle.auth.status().await.map(|(at, _)| at);
                 let cache = handle.storage.stats().await.ok();
-                (authorized, expiry, cache)
+                let missing = handle.auth.missing_scopes().await;
+                (authorized, expiry, cache, missing)
             }
-            Err(_) => (false, None, None),
+            Err(_) => (false, None, None, Vec::new()),
         }
     } else {
-        (false, None, None)
+        (false, None, None, Vec::new())
     };
 
     if as_json {
@@ -168,6 +169,7 @@ pub async fn status(config: Arc<Config>, as_json: bool, color: bool) -> Result<(
             "spotify": {
                 "client_id_configured": has_client_id,
                 "authorized": authorized,
+                "missing_scopes": missing_scopes,
                 "token_expires_at": token_expiry.map(|t| t.to_rfc3339()),
                 "redirect_uri": config.spotify.redirect_uri(),
             },
@@ -209,6 +211,19 @@ pub async fn status(config: Arc<Config>, as_json: bool, color: bool) -> Result<(
         );
     }
     println!("      redirect {}", s.dim(&config.spotify.redirect_uri()));
+    if !missing_scopes.is_empty() {
+        // A grant from an older version is missing permissions the current one
+        // needs. Nothing looks wrong until an operation 403s, so say it here.
+        println!(
+            "  {} grant is missing {}",
+            s.yellow("!"),
+            s.yellow(&missing_scopes.join(", "))
+        );
+        println!(
+            "      re-authorise to enable it: {}",
+            s.bold("spotify-agent login")
+        );
+    }
     println!();
     println!("{}", s.heading("Claude"));
     println!("  {} API key available", mark(has_api_key));

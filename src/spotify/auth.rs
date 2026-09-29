@@ -31,16 +31,24 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, RwLock};
 
-/// Least-privilege scope set. Each one is load-bearing:
-///   user-library-read          → Liked Songs
+/// Least-privilege scope set. Each one is load-bearing, and every write the
+/// client can perform must appear here — a missing one surfaces as a 403 at the
+/// moment the user presses a key, which is the worst possible time to find out.
+///
+///   user-library-read          → read Liked Songs
+///   user-library-modify        → save/unsave a track (TUI `f` key)
 ///   user-top-read              → /me/top/{artists,tracks}
 ///   user-read-recently-played  → play history
 ///   user-read-private          → market inference
 ///   playlist-read-private      → find an existing target playlist
 ///   playlist-modify-private    → write a private playlist
 ///   playlist-modify-public     → write a public one (only if configured)
+///
+/// `scope_coverage` in the tests below pins each API path to its scope, so
+/// adding an endpoint without its scope fails the build rather than a keypress.
 pub const SCOPES: &[&str] = &[
     "user-library-read",
+    "user-library-modify",
     "user-top-read",
     "user-read-recently-played",
     "user-read-private",
@@ -135,6 +143,20 @@ impl Authenticator {
 
     pub async fn is_authorized(&self) -> bool {
         self.tokens.read().await.is_some()
+    }
+
+    /// Scopes this version needs that the stored grant does not carry.
+    ///
+    /// Non-empty means some operation will 403 the moment it is attempted --
+    /// usually after a version upgrade added a feature. Surfaced by `status`
+    /// so it is discoverable before a keypress fails.
+    pub async fn missing_scopes(&self) -> Vec<&'static str> {
+        self.tokens
+            .read()
+            .await
+            .as_ref()
+            .map(TokenSet::missing_scopes)
+            .unwrap_or_default()
     }
 
     pub async fn status(&self) -> Option<(DateTime<Utc>, String)> {
@@ -685,6 +707,47 @@ mod tests {
                 ("state".into(), "x y".into())
             ]
         );
+    }
+
+    /// Every endpoint the client calls, with the scope Spotify requires for it.
+    ///
+    /// This table is the contract. `save_tracks` shipped without
+    /// `user-library-modify` and 403'd the first time someone pressed `f`;
+    /// this test is what stops that recurring.
+    #[test]
+    fn scope_coverage_matches_the_endpoints_we_call() {
+        const REQUIRED: &[(&str, &str)] = &[
+            ("GET /me/tracks", "user-library-read"),
+            ("PUT /me/tracks", "user-library-modify"),
+            ("DELETE /me/tracks", "user-library-modify"),
+            ("GET /me/top/tracks", "user-top-read"),
+            ("GET /me/top/artists", "user-top-read"),
+            (
+                "GET /me/player/recently-played",
+                "user-read-recently-played",
+            ),
+            ("GET /me", "user-read-private"),
+            ("GET /me/playlists", "playlist-read-private"),
+            ("GET /playlists/{id}/tracks", "playlist-read-private"),
+            ("POST /users/{id}/playlists", "playlist-modify-private"),
+            ("PUT /playlists/{id}", "playlist-modify-private"),
+            ("PUT /playlists/{id}/tracks", "playlist-modify-private"),
+            ("POST /playlists/{id}/tracks", "playlist-modify-private"),
+            ("DELETE /playlists/{id}/tracks", "playlist-modify-private"),
+        ];
+
+        for (endpoint, scope) in REQUIRED {
+            assert!(
+                SCOPES.contains(scope),
+                "{endpoint} needs the `{scope}` scope, which is not requested at login"
+            );
+        }
+    }
+
+    #[test]
+    fn scopes_are_unique() {
+        let unique: std::collections::HashSet<&&str> = SCOPES.iter().collect();
+        assert_eq!(unique.len(), SCOPES.len(), "duplicate scope in SCOPES");
     }
 
     #[test]
