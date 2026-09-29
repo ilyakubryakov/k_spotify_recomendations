@@ -31,6 +31,10 @@ pub enum Action {
     Moderate(Verdict),
     /// Save the language chosen in the picker.
     CommitLanguage,
+    /// Download and install the release the update dialog is offering.
+    InstallUpdate,
+    /// Remember that this version was declined, and stop offering it.
+    SkipUpdate,
 }
 
 /// A judgement the listener makes on one track, from the review pane.
@@ -58,6 +62,41 @@ impl Verdict {
             Self::Down => "thumbs down",
         }
     }
+}
+
+/// What the update dialog is showing, if anything.
+///
+/// One enum rather than a bag of booleans because the states are genuinely
+/// exclusive: a dialog cannot be both offering and installing, and the keymap
+/// differs in each — during a download there is nothing safe to press.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdatePrompt {
+    Hidden,
+    Available(Box<crate::update::Release>),
+    Downloading { done: u64, total: Option<u64> },
+    Installed(String),
+    Failed(String),
+}
+
+impl UpdatePrompt {
+    pub fn is_open(&self) -> bool {
+        !matches!(self, UpdatePrompt::Hidden)
+    }
+
+    /// True while a download is in flight — the one state that must not be
+    /// dismissed, because the swap is not finished.
+    pub fn is_busy(&self) -> bool {
+        matches!(self, UpdatePrompt::Downloading { .. })
+    }
+}
+
+/// Progress reports from the background update task.
+#[derive(Debug, Clone)]
+pub enum UpdateMsg {
+    Found(Box<crate::update::Release>),
+    Progress(u64, Option<u64>),
+    Installed(String),
+    Failed(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,6 +219,9 @@ pub struct App {
     pub wizard_open: bool,
     pub wizard_cursor: usize,
 
+    /// The self-update dialog.
+    pub update: UpdatePrompt,
+
     /// Where the last frame drew things, for mouse hit-testing.
     pub regions: HitRegions,
 }
@@ -244,6 +286,7 @@ impl App {
             prefs: Preferences::default(),
             wizard_open: false,
             wizard_cursor: 0,
+            update: UpdatePrompt::Hidden,
             regions: HitRegions::default(),
         }
     }
@@ -276,6 +319,70 @@ impl App {
         match self.prefs.save(data_dir) {
             Ok(()) => self.push_feed(FeedLine::Info(self.t().wizard_saved.to_string())),
             Err(e) => self.push_feed(FeedLine::Error(format!("could not save preferences: {e}"))),
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Self-update dialog
+    // -----------------------------------------------------------------
+
+    fn on_update_key(&mut self, key: KeyEvent) -> Action {
+        match &self.update {
+            // A download in progress owns the screen: dismissing it would
+            // hide a swap that is still happening.
+            UpdatePrompt::Downloading { .. } => Action::None,
+            UpdatePrompt::Available(_) => match key.code {
+                KeyCode::Enter | KeyCode::Char('u') => Action::InstallUpdate,
+                KeyCode::Char('s') => Action::SkipUpdate,
+                KeyCode::Esc | KeyCode::Char('l') | KeyCode::Char('q') => {
+                    self.update = UpdatePrompt::Hidden;
+                    Action::None
+                }
+                _ => Action::None,
+            },
+            // A finished dialog, good or bad, closes on anything.
+            UpdatePrompt::Installed(_) | UpdatePrompt::Failed(_) => {
+                self.update = UpdatePrompt::Hidden;
+                Action::None
+            }
+            UpdatePrompt::Hidden => Action::None,
+        }
+    }
+
+    pub fn on_update_msg(&mut self, msg: UpdateMsg) {
+        match msg {
+            UpdateMsg::Found(release) => {
+                // Never interrupt a run in progress with a dialog; the feed
+                // line is enough until the user is looking at the screen
+                // again, and the check does not repeat for another day.
+                self.push_feed(FeedLine::Info(format!(
+                    "update available: {} → {}",
+                    crate::VERSION,
+                    release.version
+                )));
+                if !self.busy.is_busy() && !self.wizard_open {
+                    self.update = UpdatePrompt::Available(release);
+                }
+            }
+            UpdateMsg::Progress(done, total) => {
+                self.update = UpdatePrompt::Downloading { done, total };
+            }
+            UpdateMsg::Installed(version) => {
+                self.push_feed(FeedLine::Info(format!("installed spotify-agent {version}")));
+                self.update = UpdatePrompt::Installed(version);
+            }
+            UpdateMsg::Failed(error) => {
+                self.push_feed(FeedLine::Error(format!("update failed: {error}")));
+                self.update = UpdatePrompt::Failed(error);
+            }
+        }
+    }
+
+    /// The release the dialog is offering, if it is offering one.
+    pub fn pending_update(&self) -> Option<&crate::update::Release> {
+        match &self.update {
+            UpdatePrompt::Available(release) => Some(release),
+            _ => None,
         }
     }
 
@@ -394,6 +501,13 @@ impl App {
                 _ => {}
             }
             return Action::None;
+        }
+
+        // The update dialog is modal too, and ranks below the first-run
+        // wizard: a brand-new install should pick a language before it is
+        // asked about upgrading.
+        if self.update.is_open() {
+            return self.on_update_key(key);
         }
 
         if self.show_help {
@@ -897,6 +1011,93 @@ mod tests {
             kind: KeyEventKind::Press,
             state: ratatui::crossterm::event::KeyEventState::NONE,
         }
+    }
+
+    fn release(version: &str) -> Box<crate::update::Release> {
+        Box::new(crate::update::Release {
+            tag: format!("v{version}"),
+            version: crate::update::version::Version::parse(version).expect("parses"),
+            url: String::new(),
+            notes: "- something".into(),
+            prerelease: false,
+            published_at: None,
+        })
+    }
+
+    #[test]
+    fn the_update_dialog_is_modal() {
+        // `q` normally quits. While the dialog is up it must dismiss the
+        // dialog instead, or a stray keystroke closes the whole program.
+        let mut app = app();
+        app.update = UpdatePrompt::Available(release("9.9.9"));
+        assert_eq!(app.on_key(key(KeyCode::Char('q'))), Action::None);
+        assert_eq!(app.update, UpdatePrompt::Hidden);
+    }
+
+    #[test]
+    fn the_update_dialog_offers_install_skip_and_later() {
+        let mut app = app();
+
+        app.update = UpdatePrompt::Available(release("9.9.9"));
+        assert_eq!(app.on_key(key(KeyCode::Enter)), Action::InstallUpdate);
+        // Still open: the event loop closes it once the download starts.
+        assert!(app.update.is_open());
+
+        assert_eq!(app.on_key(key(KeyCode::Char('s'))), Action::SkipUpdate);
+
+        app.update = UpdatePrompt::Available(release("9.9.9"));
+        assert_eq!(app.on_key(key(KeyCode::Esc)), Action::None);
+        assert_eq!(app.update, UpdatePrompt::Hidden);
+    }
+
+    #[test]
+    fn a_download_in_progress_ignores_every_key() {
+        // Dismissing mid-swap would hide an operation that is still running.
+        let mut app = app();
+        app.update = UpdatePrompt::Downloading {
+            done: 10,
+            total: Some(100),
+        };
+        for code in [KeyCode::Esc, KeyCode::Enter, KeyCode::Char('q')] {
+            assert_eq!(app.on_key(key(code)), Action::None);
+            assert!(app.update.is_busy(), "{code:?} dismissed a live download");
+        }
+    }
+
+    #[test]
+    fn a_finished_update_dialog_closes_on_any_key() {
+        for state in [
+            UpdatePrompt::Installed("9.9.9".into()),
+            UpdatePrompt::Failed("no".into()),
+        ] {
+            let mut app = app();
+            app.update = state;
+            app.on_key(key(KeyCode::Char('z')));
+            assert_eq!(app.update, UpdatePrompt::Hidden);
+        }
+    }
+
+    #[test]
+    fn an_update_found_mid_run_waits_instead_of_covering_the_screen() {
+        let mut app = app();
+        app.busy = Busy::Syncing;
+        app.on_update_msg(UpdateMsg::Found(release("9.9.9")));
+        assert_eq!(app.update, UpdatePrompt::Hidden);
+        // It is still reported, just not as a modal over a running pipeline.
+        assert!(app.feed.iter().any(|line| matches!(
+            line,
+            FeedLine::Info(text) if text.contains("9.9.9")
+        )));
+    }
+
+    #[test]
+    fn the_language_picker_outranks_the_update_dialog() {
+        // A brand-new install should choose a language before being asked
+        // about upgrading; both are modal, so the order has to be decided.
+        let mut app = app();
+        app.wizard_open = true;
+        app.update = UpdatePrompt::Available(release("9.9.9"));
+        assert_eq!(app.on_key(key(KeyCode::Enter)), Action::CommitLanguage);
     }
 
     #[test]

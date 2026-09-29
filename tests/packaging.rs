@@ -118,6 +118,49 @@ fn installers_target_user_writable_locations_only() {
 }
 
 #[test]
+fn the_installers_and_the_self_updater_agree_on_where_releases_come_from() {
+    // Three independent implementations download the same assets: install.sh,
+    // install.ps1 and `spotify-agent update`. If they drift, one of them 404s
+    // at exactly the moment a user is trying to install or upgrade.
+    let sh = fs::read_to_string(SH).expect("install.sh is readable");
+    let ps1 = fs::read_to_string(PS1).expect("install.ps1 is readable");
+    let repo = spotify_agent::config::DEFAULT_REPO;
+
+    assert!(sh.contains(repo), "install.sh does not default to {repo}");
+    assert!(ps1.contains(repo), "install.ps1 does not default to {repo}");
+
+    // Asset names carry no version, because `releases/latest/download/` only
+    // resolves for stable names — see the release workflow.
+    assert!(sh.contains(r#"archive="$APP-$TRIPLE.tar.gz""#));
+    assert!(ps1.contains(r#"$archive = "$App-$Triple.zip""#));
+    assert_eq!(
+        spotify_agent::update::install::archive_extension(),
+        if cfg!(windows) { ".zip" } else { ".tar.gz" }
+    );
+    if let Some(asset) = spotify_agent::update::install::asset_name() {
+        assert!(asset.starts_with("spotify-agent-"), "{asset}");
+    }
+
+    // Both installers verify against the same file the updater does.
+    assert!(sh.contains("SHA256SUMS"));
+    assert!(ps1.contains("SHA256SUMS"));
+}
+
+#[test]
+fn every_published_target_is_one_the_release_workflow_builds() {
+    // The updater's list is what it derives a download URL from; the workflow
+    // is what actually uploads. A target in one and not the other is a 404.
+    let workflow =
+        fs::read_to_string(".github/workflows/release.yml").expect("release.yml is readable");
+    for target in spotify_agent::update::install::PUBLISHED_TARGETS {
+        assert!(
+            workflow.contains(target),
+            "{target} is offered by the updater but not built by release.yml"
+        );
+    }
+}
+
+#[test]
 fn the_shell_installer_is_posix_sh_not_bash() {
     let sh = fs::read_to_string(SH).expect("install.sh is readable");
     let first = sh.lines().next().unwrap_or_default();

@@ -53,6 +53,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub cron: bool,
 
+    /// Do not check for a new release on this run.
+    #[arg(long, global = true)]
+    pub no_update_check: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -195,6 +199,13 @@ pub enum Command {
         command: ConfigCommand,
     },
 
+    /// Check for a new release and install it in place.
+    ///
+    /// Downloads the release archive for this platform, verifies it against
+    /// the release's published SHA256SUMS, and replaces this binary. Never
+    /// needs root: it only writes where the binary already lives.
+    Update(UpdateArgs),
+
     /// Print a shell completion script.
     Completions {
         #[arg(value_enum)]
@@ -253,6 +264,25 @@ pub struct GenerateArgs {
     pub headless: bool,
 
     /// Print the result as JSON on stdout.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Parser)]
+pub struct UpdateArgs {
+    /// Report what is available and exit without downloading anything.
+    #[arg(long)]
+    pub check: bool,
+
+    /// Install without asking.
+    #[arg(long, short)]
+    pub yes: bool,
+
+    /// Install this exact tag instead of the newest release. Allows going
+    /// backwards, which is the point: it is how you undo a bad upgrade.
+    #[arg(long, value_name = "TAG")]
+    pub to: Option<String>,
+
     #[arg(long)]
     pub json: bool,
 }

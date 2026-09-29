@@ -83,6 +83,7 @@ pub static LT: Strings = Strings {
     key_scroll: "slinkti",
     key_mouse: "spustelėjimas — pasirinkti, ratukas — slinkti",
     key_settings: "nustatymai",
+    key_update: "tikrinti naujinius",
     any_key_closes: "bet kuris klavišas uždaro šį langą",
 
     help_navigation: "Naršymas",
@@ -109,6 +110,16 @@ pub static LT: Strings = Strings {
     setup_config_at: "konfigūracijos failas",
     setup_done: "paruošta",
     setup_missing: "nenustatyta",
+
+    update_title: "Yra naujinys",
+    update_current: "įdiegta",
+    update_install: "diegti dabar",
+    update_skip: "praleisti šią versiją",
+    update_later: "priminti vėliau",
+    update_downloading: "atsiunčiama…",
+    update_installed: "Naujinys įdiegtas.",
+    update_restart: "Paleiskite spotify-agent iš naujo, kad juo naudotumėtės.",
+    update_failed: "Nepavyko atnaujinti",
 
     wizard_title: "Pasirinkite kalbą",
     wizard_prompt: "Rodyklės ↑ ↓ arba pelė, tada Enter.",

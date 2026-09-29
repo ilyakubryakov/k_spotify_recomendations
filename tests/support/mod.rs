@@ -44,7 +44,9 @@ impl Recorded {
 pub struct Reply {
     pub status: u16,
     pub headers: Vec<(String, String)>,
-    pub body: String,
+    /// Bytes, not a String: release archives are gzip, and a test that has to
+    /// serve one must be able to serve exactly the bytes it built.
+    pub body: Vec<u8>,
 }
 
 impl Reply {
@@ -52,7 +54,23 @@ impl Reply {
         Self {
             status,
             headers: vec![("content-type".into(), "application/json".into())],
-            body: body.into(),
+            body: body.into().into_bytes(),
+        }
+    }
+
+    pub fn text(status: u16, body: impl Into<String>) -> Self {
+        Self {
+            status,
+            headers: vec![("content-type".into(), "text/plain".into())],
+            body: body.into().into_bytes(),
+        }
+    }
+
+    pub fn bytes(status: u16, body: Vec<u8>) -> Self {
+        Self {
+            status,
+            headers: vec![("content-type".into(), "application/octet-stream".into())],
+            body,
         }
     }
 
@@ -65,7 +83,7 @@ impl Reply {
         Self {
             status: 200,
             headers: vec![("content-type".into(), "text/event-stream".into())],
-            body,
+            body: body.into_bytes(),
         }
     }
 
@@ -180,8 +198,9 @@ impl MockServer {
                         "content-length: {}\r\nconnection: close\r\n\r\n",
                         reply.body.len()
                     ));
-                    response.push_str(&reply.body);
-                    let _ = stream.write_all(response.as_bytes()).await;
+                    let mut response = response.into_bytes();
+                    response.extend_from_slice(&reply.body);
+                    let _ = stream.write_all(&response).await;
                     let _ = stream.flush().await;
                 });
             }

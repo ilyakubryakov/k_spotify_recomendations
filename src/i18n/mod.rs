@@ -180,6 +180,7 @@ pub struct Strings {
     pub key_scroll: &'static str,
     pub key_mouse: &'static str,
     pub key_settings: &'static str,
+    pub key_update: &'static str,
     pub any_key_closes: &'static str,
 
     // --- help sections ---
@@ -209,6 +210,17 @@ pub struct Strings {
     pub setup_config_at: &'static str,
     pub setup_done: &'static str,
     pub setup_missing: &'static str,
+
+    // --- self-update dialog ---
+    pub update_title: &'static str,
+    pub update_current: &'static str,
+    pub update_install: &'static str,
+    pub update_skip: &'static str,
+    pub update_later: &'static str,
+    pub update_downloading: &'static str,
+    pub update_installed: &'static str,
+    pub update_restart: &'static str,
+    pub update_failed: &'static str,
 
     // --- first-run wizard ---
     pub wizard_title: &'static str,
@@ -296,6 +308,7 @@ pub static EN: Strings = Strings {
     key_scroll: "scroll",
     key_mouse: "click to select, wheel to scroll",
     key_settings: "settings",
+    key_update: "check for updates",
     any_key_closes: "any key closes this panel",
 
     help_navigation: "Navigation",
@@ -322,6 +335,16 @@ pub static EN: Strings = Strings {
     setup_config_at: "config file",
     setup_done: "ready",
     setup_missing: "missing",
+
+    update_title: "Update available",
+    update_current: "installed",
+    update_install: "install now",
+    update_skip: "skip this version",
+    update_later: "remind me later",
+    update_downloading: "downloading…",
+    update_installed: "Update installed.",
+    update_restart: "Restart spotify-agent to use it.",
+    update_failed: "Could not update",
 
     wizard_title: "Choose your language",
     wizard_prompt: "Use ↑ ↓ or click, then press Enter.",

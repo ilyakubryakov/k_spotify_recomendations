@@ -246,6 +246,36 @@ timeout_secs     = 15
 
 
 # ---------------------------------------------------------------------------
+[update]
+# ---------------------------------------------------------------------------
+# Self-update. The defaults are "tell me, touch nothing": one check a day, a
+# prompt when something is newer, and no download until you accept it.
+
+# Turns off the *automatic* check only. `spotify-agent update` still works --
+# an explicit command is never silenced. Set it false for a packaged install,
+# or export SPOTIFY_AGENT_NO_UPDATE_CHECK=1 to disable it machine-wide.
+enabled = true
+
+# GitHub rate-limits unauthenticated requests per IP address, and everything
+# behind one NAT shares that budget. Once a day is plenty.
+check_interval_hours = 24
+
+# Where releases come from. Point it at your fork if you run one.
+repo = "ilyakubryakov/k_spotify_recomendations"
+
+# Offer -rc builds. A pre-release is published to be tested deliberately, not
+# to arrive on a laptop overnight.
+include_prereleases = false
+
+# Install without asking, including under --cron. Off by default and worth
+# leaving off: a scheduled run that swaps its own binary mid-schedule is how a
+# working cron job turns into a 3 a.m. page.
+auto_install = false
+
+timeout_secs = 20
+
+
+# ---------------------------------------------------------------------------
 [storage]
 # ---------------------------------------------------------------------------
 

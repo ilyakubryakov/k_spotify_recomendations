@@ -12,6 +12,7 @@ src/
   spotify/    OAuth (PKCE) + rate-limited Web API client.
   llm/        provider-agnostic chain: anthropic | openai | ollama | gemini.
   storage/    SQLite: library mirror, play history, feedback, snapshots.
+  update/     release checks + verified in-place self-replacement.
   engine/     orchestration. analyze → prompt → resolve → filter → publish.
   tui/        app.rs is state + input, ui.rs is rendering. Strictly separated.
   i18n/       one struct of &'static str per language.
@@ -61,6 +62,16 @@ is why `cache clear` demands `--yes` and why retention defaults are generous.
 `engine::feedback::classify_play` derives it from the gap to the next play. It
 over-reports (a pause looks like a skip), so the weight is deliberately smaller
 than an explicit thumbs-down. Don't raise it without evidence.
+
+**Replacing a running binary.** `update::install` is where the platform
+differences live, and the order of its steps is load-bearing: verify the
+SHA-256, extract in memory, stage *next to* the current binary (rename is only
+atomic within one filesystem, and `$TMPDIR` usually isn't one), run the staged
+file with `--version`, and only then swap. On Windows a mapped image cannot be
+deleted or overwritten but *can* be renamed, so the live binary is moved to
+`<name>.old` first and swept up by `cleanup_leftovers()` on the next start.
+`Staged` is a drop guard: without it every early return leaks a multi-megabyte
+file into the user's `bin` directory.
 
 **Snapshots before destructive writes.** `engine::publish` refuses to overwrite
 a playlist if the snapshot fails. That's intentional: it's the one case where
@@ -124,7 +135,11 @@ publishes archives plus a `SHA256SUMS` the installers verify against.
 
 Asset names are load-bearing: `spotify-agent-<target>.tar.gz` / `.zip`, with no
 version in the filename, so `releases/latest/download/` resolves. Changing that
-scheme means changing both installers.
+scheme means changing both installers **and** `update::install::asset_name` —
+there are now three implementations of "where does a release live", and
+`tests/packaging.rs` asserts they agree. `PUBLISHED_TARGETS` must also stay in
+step with the release matrix; a target listed there but not built is a 404 at
+update time.
 
 The tag must match `version` in Cargo.toml — the release job checks and fails
 otherwise.
@@ -136,3 +151,6 @@ otherwise.
 - Changing what gets filtered out: `engine/filter.rs` and `engine::select`.
 - Changing what "least engaging" means for rolling playlists:
   `engine/rolling.rs::Incumbent::engagement`.
+- Changing when the agent offers to update itself: `update/mod.rs` holds the
+  policy (interval, skipped versions, who may prompt); `update/install.rs`
+  holds the mechanics.

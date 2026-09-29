@@ -40,6 +40,7 @@ pub struct Config {
     pub storage: StorageConfig,
     pub feedback: FeedbackConfig,
     pub notifications: NotificationConfig,
+    pub update: UpdateConfig,
     pub defaults: RunDefaults,
     pub filters: Filters,
     /// Named presets, merged over `defaults` + `filters` at run time.
@@ -876,6 +877,56 @@ pub enum WebhookKind {
     /// POST `{"text": "..."}` and let the receiver decide.
     Generic,
 }
+
+// ===========================================================================
+// [update]
+// ===========================================================================
+
+/// Self-update policy.
+///
+/// The defaults are "tell me, do not touch anything": a check once a day, a
+/// prompt when something is newer, and no download until it is accepted.
+/// Everything here can be turned off, because a binary that phones home on a
+/// schedule is not acceptable in every environment — and a packaged install
+/// must not replace files its package manager owns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UpdateConfig {
+    /// Master switch for the *automatic* check. `spotify-agent update` still
+    /// works when this is false — an explicit command is never silenced.
+    pub enabled: bool,
+    /// How long to wait between automatic checks. GitHub rate-limits
+    /// unauthenticated requests per IP address, which is shared by everything
+    /// behind one NAT, so this is deliberately not aggressive.
+    pub check_interval_hours: u64,
+    /// `owner/name` to fetch releases from. Point it at a fork if you run one.
+    pub repo: String,
+    /// Offer `-rc` builds. Off by default: a pre-release is published to be
+    /// tested deliberately, not to arrive on a laptop overnight.
+    pub include_prereleases: bool,
+    /// Install without asking. Off by default, and it stays off unless you
+    /// mean it: an unattended run that swaps its own binary mid-schedule is
+    /// how a working cron job becomes a 3 a.m. page.
+    pub auto_install: bool,
+    pub timeout_secs: u64,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_hours: 24,
+            repo: DEFAULT_REPO.to_string(),
+            include_prereleases: false,
+            auto_install: false,
+            timeout_secs: 20,
+        }
+    }
+}
+
+/// Where releases come from. Shared with `packaging/install.sh` and
+/// `packaging/install.ps1`; `tests/packaging.rs` asserts the three agree.
+pub const DEFAULT_REPO: &str = "ilyakubryakov/k_spotify_recomendations";
 
 // ===========================================================================
 // Loading

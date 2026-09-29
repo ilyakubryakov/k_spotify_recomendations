@@ -83,6 +83,7 @@ pub static PL: Strings = Strings {
     key_scroll: "przewijanie",
     key_mouse: "klik — wybór, kółko — przewijanie",
     key_settings: "ustawienia",
+    key_update: "sprawdź aktualizacje",
     any_key_closes: "dowolny klawisz zamyka to okno",
 
     help_navigation: "Nawigacja",
@@ -109,6 +110,16 @@ pub static PL: Strings = Strings {
     setup_config_at: "plik konfiguracyjny",
     setup_done: "gotowe",
     setup_missing: "brak",
+
+    update_title: "Dostępna aktualizacja",
+    update_current: "zainstalowana",
+    update_install: "zainstaluj teraz",
+    update_skip: "pomiń tę wersję",
+    update_later: "przypomnij później",
+    update_downloading: "pobieranie…",
+    update_installed: "Aktualizacja zainstalowana.",
+    update_restart: "Uruchom ponownie spotify-agent, aby z niej skorzystać.",
+    update_failed: "Nie udało się zaktualizować",
 
     wizard_title: "Wybierz język",
     wizard_prompt: "Strzałki ↑ ↓ lub mysz, potem Enter.",

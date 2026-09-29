@@ -71,6 +71,33 @@ curl -fsSL .../install.sh | sh -s -- --add-path --schedule daily
 
 `--uninstall` / `-Uninstall` reverses everything except your config and cache.
 
+### Updating
+
+The agent keeps itself current. Once a day it asks GitHub whether there is a
+newer release; if there is, the TUI offers a dialog and every other command
+prints one line on stderr. Nothing is downloaded until you say yes.
+
+```sh
+spotify-agent update            # check, show the notes, ask, install
+spotify-agent update --check    # report only, download nothing
+spotify-agent update --yes      # for scripts
+spotify-agent update --to v0.1.1  # go back to a specific release
+```
+
+It replaces the binary where it already lives, so it needs no more privilege
+than the install did. The archive is verified against the release's
+`SHA256SUMS` and then run once with `--version` before anything is swapped —
+a wrong-architecture or truncated download is refused while your working
+binary is still in place.
+
+Turn the automatic check off with `enabled = false` under `[update]`, per-run
+with `--no-update-check`, or machine-wide with
+`SPOTIFY_AGENT_NO_UPDATE_CHECK=1`. Unattended runs (`--cron`) never prompt and
+never install unless you set `auto_install = true`.
+
+If you installed through a package manager the updater says so and stops
+rather than overwriting files it does not own.
+
 ### Building from source
 
 Prebuilt binaries exist for x86-64 and arm64 Linux (glibc and musl), macOS as a
@@ -304,6 +331,7 @@ recommended / forget         inspect and reset the anti-repeat memory
 feedback / ban / unban       what it learned, and overriding it
 snapshots / export          backups and portable tracklists
 schedule                     background runs
+update                       check for and install a new release
 cache / config / history     housekeeping
 ```
 
@@ -312,14 +340,17 @@ cache / config / history     housekeeping
 ## Development
 
 ```bash
-cargo test           # 160-odd tests, no network required
+cargo test           # 200-odd tests, no network required
 cargo clippy --all-targets
 ```
 
 The HTTP layers are tested against a scripted mock server in `tests/`, which
 pins each provider's exact request shape — the failure mode when one drifts is
 otherwise a 400 at 3am in a cron run. `tests/packaging.rs` checks the installer
-scripts, which nothing else type-checks. `docs/architecture.md` covers the
+scripts, which nothing else type-checks, and `tests/update_wire.rs` drives the
+self-updater through a real archive — including the checksum mismatch and the
+missing asset, since those are the paths that decide whether a bad download can
+land on a user's machine. `docs/architecture.md` covers the
 layering and the decisions that aren't obvious from the code.
 
 CI runs fmt, clippy, the suite on all three platforms, an MSRV check, installer

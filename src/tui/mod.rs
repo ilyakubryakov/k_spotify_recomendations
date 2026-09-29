@@ -26,7 +26,7 @@ use crate::config::Config;
 use crate::engine::Engine;
 use crate::error::{AgentError, Result};
 use crate::telemetry::LogBuffer;
-use app::{Action, App, Verdict};
+use app::{Action, App, UpdateMsg, UpdatePrompt, Verdict};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event as CtEvent, KeyEventKind};
@@ -117,6 +117,11 @@ async fn event_loop(
     let (engine_tx, mut engine_rx) = mpsc::unbounded_channel();
     let mut app = App::new(Arc::clone(&config), log_buffer, engine_tx);
 
+    // The release check runs detached: it must never delay the first frame,
+    // and a GitHub that is slow or unreachable simply means no dialog.
+    let (update_tx, mut update_rx) = mpsc::unbounded_channel::<UpdateMsg>();
+    spawn_update_check(Arc::clone(&config), update_tx.clone());
+
     // Interface language: config wins, then the saved preference, then the
     // system locale. A first run with none of those opens the picker.
     let data_dir = config.data_dir()?;
@@ -160,6 +165,10 @@ async fn event_loop(
                 app.on_engine_event(event);
                 Action::None
             }
+            Some(message) = update_rx.recv() => {
+                app.on_update_msg(message);
+                Action::None
+            }
             _ = ticker.tick() => {
                 app.on_tick();
                 Action::None
@@ -194,10 +203,85 @@ async fn event_loop(
                 let data_dir = config.data_dir()?;
                 app.commit_language(&data_dir);
             }
+            Action::InstallUpdate => {
+                if let Some(release) = app.pending_update().cloned() {
+                    app.update = UpdatePrompt::Downloading {
+                        done: 0,
+                        total: None,
+                    };
+                    spawn_install(Arc::clone(&config), Box::new(release), update_tx.clone());
+                }
+            }
+            Action::SkipUpdate => {
+                if let Some(release) = app.pending_update() {
+                    let tag = release.tag.clone();
+                    app.update = UpdatePrompt::Hidden;
+                    if let Ok(updater) = crate::update::Updater::new(&config)
+                        && let Err(e) = updater.skip(&tag)
+                    {
+                        tracing::debug!(error = %e, "could not record the skipped version");
+                    }
+                }
+            }
         }
     }
 
     Ok(())
+}
+
+/// Ask GitHub whether there is anything newer, on a detached task.
+///
+/// Everything that would make the answer unwelcome — the feature being off,
+/// the interval not yet elapsed, the version already declined, a network
+/// failure — ends in silence here rather than in a dialog the user has to
+/// dismiss.
+fn spawn_update_check(config: Arc<Config>, tx: mpsc::UnboundedSender<UpdateMsg>) {
+    tokio::spawn(async move {
+        let Ok(updater) = crate::update::Updater::new(&config) else {
+            return;
+        };
+        if !updater.auto_enabled() || !updater.is_due() {
+            return;
+        }
+        match updater.check(false).await {
+            Ok(crate::update::Check::Available { release, .. }) => {
+                if !updater.was_skipped(&release) {
+                    let _ = tx.send(UpdateMsg::Found(release));
+                }
+            }
+            Ok(_) => {}
+            Err(e) => tracing::debug!(error = %e, "update check failed"),
+        }
+    });
+}
+
+/// Download and swap in a release, reporting progress back to the dialog.
+fn spawn_install(
+    config: Arc<Config>,
+    release: Box<crate::update::Release>,
+    tx: mpsc::UnboundedSender<UpdateMsg>,
+) {
+    tokio::spawn(async move {
+        let updater = match crate::update::Updater::new(&config) {
+            Ok(updater) => updater,
+            Err(e) => {
+                let _ = tx.send(UpdateMsg::Failed(e.to_string()));
+                return;
+            }
+        };
+
+        let progress = tx.clone();
+        let result = updater
+            .install(&release, move |done, total| {
+                let _ = progress.send(UpdateMsg::Progress(done, total));
+            })
+            .await;
+
+        let _ = tx.send(match result {
+            Ok(_) => UpdateMsg::Installed(release.version.to_string()),
+            Err(e) => UpdateMsg::Failed(e.to_string()),
+        });
+    });
 }
 
 /// Apply a moderation verdict: write it to Spotify, record the signal, and

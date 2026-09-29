@@ -80,6 +80,7 @@ pub static RU: Strings = Strings {
     key_scroll: "прокрутка",
     key_mouse: "клик — выбор, колесо — прокрутка",
     key_settings: "настройки",
+    key_update: "проверить обновления",
     any_key_closes: "любая клавиша закрывает это окно",
 
     help_navigation: "Навигация",
@@ -106,6 +107,16 @@ pub static RU: Strings = Strings {
     setup_config_at: "файл конфигурации",
     setup_done: "готово",
     setup_missing: "не задано",
+
+    update_title: "Доступно обновление",
+    update_current: "установлена",
+    update_install: "установить сейчас",
+    update_skip: "пропустить эту версию",
+    update_later: "напомнить позже",
+    update_downloading: "загрузка…",
+    update_installed: "Обновление установлено.",
+    update_restart: "Перезапустите spotify-agent, чтобы им пользоваться.",
+    update_failed: "Не удалось обновить",
 
     wizard_title: "Выберите язык",
     wizard_prompt: "Стрелки ↑ ↓ или мышь, затем Enter.",

@@ -161,6 +161,10 @@ pub async fn status(config: Arc<Config>, as_json: bool, color: bool) -> Result<(
         (false, None, None, Vec::new())
     };
 
+    // Read from disk only: `status` reports what is known, and must not make
+    // a network call the user did not ask for.
+    let update_state = crate::update::state::UpdateState::load(&config.data_dir()?);
+
     if as_json {
         return print_json(json!({
             "config_path": config_path,
@@ -189,6 +193,13 @@ pub async fn status(config: Arc<Config>, as_json: bool, color: bool) -> Result<(
                 "last_sync": c.last_sync.map(|t| t.to_rfc3339()),
             })),
             "presets": config.preset_names(),
+            "version": crate::VERSION,
+            "update": {
+                "enabled": config.update.enabled,
+                "target": crate::update::install::target_triple(),
+                "latest_seen": update_state.latest_seen,
+                "last_check": update_state.last_check.map(|t| t.to_rfc3339()),
+            },
         }));
     }
 
@@ -263,6 +274,29 @@ pub async fn status(config: Arc<Config>, as_json: bool, color: bool) -> Result<(
     println!();
     println!("{}", s.heading("Presets"));
     println!("  {}", config.preset_names().join(", "));
+    println!();
+    println!("{}", s.heading("Version"));
+    println!(
+        "  {}{}",
+        s.bold(crate::VERSION),
+        crate::update::install::target_triple()
+            .map(|t| format!("  {}", s.dim(t)))
+            .unwrap_or_else(|| format!("  {}", s.dim("built from source for this platform")))
+    );
+    match (&update_state.latest_seen, update_state.last_check) {
+        (Some(latest), Some(checked)) => println!(
+            "  latest release seen {} {}",
+            s.bold(latest),
+            s.dim(&format!(
+                "(checked {})",
+                checked.format("%Y-%m-%d %H:%M UTC")
+            ))
+        ),
+        _ => println!("  {}", s.dim("no release check has run yet")),
+    }
+    if !config.update.enabled {
+        println!("  {}", s.dim("automatic checks are turned off"));
+    }
     Ok(())
 }
 
@@ -1471,6 +1505,173 @@ pub fn config_cmd(config: Arc<Config>, command: ConfigCommand) -> Result<()> {
             Ok(())
         }
     }
+}
+
+// ===========================================================================
+// update
+// ===========================================================================
+
+/// `spotify-agent update` — check, report, and replace this binary.
+///
+/// The flow is deliberately conservative. Nothing is downloaded until the user
+/// has seen what is on offer and agreed, `--check` never downloads at all, and
+/// a non-interactive invocation without `--yes` reports and stops rather than
+/// assuming consent it cannot ask for.
+pub async fn update(
+    config: Arc<Config>,
+    args: crate::cli::UpdateArgs,
+    use_color: bool,
+) -> Result<()> {
+    use crate::update::{Check, Updater};
+
+    let style = Style::new(use_color);
+    let updater = Updater::new(&config)?;
+    let current = crate::update::version::Version::current();
+
+    // An explicit tag is a different question ("give me this one") and is
+    // answered without the newer/older comparison, so a downgrade works.
+    let (release, is_upgrade) = match &args.to {
+        Some(tag) => {
+            let release = updater.release_by_tag(tag).await?;
+            let newer = release.version > current;
+            (Some(release), newer)
+        }
+        None => match updater.check(true).await? {
+            Check::Available { release, .. } => (Some(*release), true),
+            Check::UpToDate { .. } | Check::Disabled => (None, false),
+        },
+    };
+
+    if args.json {
+        return print_json(json!({
+            "current": current.to_string(),
+            "latest": release.as_ref().map(|r| r.version.to_string()),
+            "tag": release.as_ref().map(|r| r.tag.clone()),
+            "url": release.as_ref().map(|r| r.url.clone()),
+            "update_available": release.is_some() && is_upgrade,
+            "target": crate::update::install::target_triple(),
+        }));
+    }
+
+    let Some(release) = release else {
+        println!(
+            "{} is the latest release.",
+            style.bold(&format!("spotify-agent {current}"))
+        );
+        return Ok(());
+    };
+
+    let direction = if is_upgrade { "→" } else { "↓ (downgrade)" };
+    println!(
+        "{}  {current} {direction} {}",
+        style.bold("spotify-agent"),
+        style.green(&release.version.to_string())
+    );
+    if !release.url.is_empty() {
+        println!("{}", style.dim(&release.url));
+    }
+    let summary = release.summary(8);
+    if !summary.is_empty() {
+        println!();
+        for line in summary.lines() {
+            println!("  {line}");
+        }
+    }
+    println!();
+
+    if args.check {
+        println!("{}", style.dim("run `spotify-agent update` to install it"));
+        return Ok(());
+    }
+
+    if !args.yes && !confirm("Install it now?")? {
+        println!("{}", style.dim("left alone"));
+        return Ok(());
+    }
+
+    let exe = install_release(&updater, &release, use_color).await?;
+    println!(
+        "{} {} is installed at {}",
+        style.green("✓"),
+        style.bold(&format!("spotify-agent {}", release.version)),
+        exe.display()
+    );
+    println!(
+        "{}",
+        style.dim("any already-running instance keeps the old code until it restarts")
+    );
+    Ok(())
+}
+
+/// Download with a progress line, then swap. Shared by the CLI and the TUI's
+/// "update now" so both report the same thing and verify the same way.
+async fn install_release(
+    updater: &crate::update::Updater,
+    release: &crate::update::Release,
+    use_color: bool,
+) -> Result<std::path::PathBuf> {
+    use std::io::IsTerminal;
+
+    let style = Style::new(use_color);
+    println!("{}", style.dim(&format!("downloading {}…", release.tag)));
+
+    // Progress is only drawn on a terminal: a carriage-return animation in a
+    // log file or a CI transcript is noise, and `\r` in a pipe is worse.
+    let animate = std::io::stderr().is_terminal();
+    let exe = updater
+        .install(release, move |done, total| {
+            if !animate {
+                return;
+            }
+            let mut err = std::io::stderr().lock();
+            let _ = match total {
+                Some(total) if total > 0 => write!(
+                    err,
+                    "\r  {:>3}%  {:.1} MB",
+                    done * 100 / total,
+                    done as f64 / 1_048_576.0
+                ),
+                _ => write!(err, "\r  {:.1} MB", done as f64 / 1_048_576.0),
+            };
+            let _ = err.flush();
+        })
+        .await;
+
+    if animate {
+        let mut err = std::io::stderr().lock();
+        let _ = write!(err, "\r{:40}\r", "");
+        let _ = err.flush();
+    }
+    exe
+}
+
+/// Ask a yes/no question on the terminal.
+///
+/// A non-terminal stdin answers "no": a piped or absent stdin cannot consent,
+/// and treating end-of-file as agreement is how unattended scripts get
+/// surprises they never asked for.
+fn confirm(question: &str) -> Result<bool> {
+    use std::io::{BufRead, IsTerminal};
+
+    if !std::io::stdin().is_terminal() {
+        println!("not a terminal — re-run with --yes to install");
+        return Ok(false);
+    }
+
+    print!("{question} [y/N] ");
+    std::io::stdout()
+        .flush()
+        .map_err(|e| AgentError::io("stdout", e))?;
+
+    let mut answer = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut answer)
+        .map_err(|e| AgentError::io("stdin", e))?;
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@
 //! | [`export`]  | M3U8 / CSV / JSON tracklists that outlive Spotify        |
 //! | [`schedule`]| user-level background scheduling on all three platforms  |
 //! | [`notify`]  | desktop notifications and webhooks                      |
+//! | [`update`]  | release checks and verified in-place self-replacement    |
 //! | [`util`]    | secrets, retry policy, text normalisation, fs helpers   |
 //!
 //! Dependencies point strictly downward: `engine` knows about `spotify`,
@@ -48,6 +49,7 @@ pub mod spotify;
 pub mod storage;
 pub mod telemetry;
 pub mod tui;
+pub mod update;
 pub mod util;
 
 pub use error::{AgentError, Result};

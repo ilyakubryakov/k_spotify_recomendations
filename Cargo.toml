@@ -81,11 +81,25 @@ chrono      = { version = "0.4", features = ["serde", "clock"] }
 directories = "5.0"
 base64      = "0.22"
 sha2        = "0.10"
+
+# --- self-update ---------------------------------------------------------
+# Release archives are unpacked in-process rather than by shelling out to
+# `tar`: the update path must work identically on a minimal container and on
+# Windows, where there is no tar to shell out to on older builds. Both are
+# pure Rust (flate2's default backend is miniz_oxide), so this adds no C
+# dependency to a binary whose whole point is to be a single file.
+flate2 = "1.0"
+tar    = "0.4"
 rand        = "0.8"
 unicode-normalization = "0.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# Windows release archives are .zip (Compress-Archive), everything else is
+# .tar.gz -- so the zip reader is only linked where it is actually reachable.
+[target.'cfg(windows)'.dependencies]
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tokio = { version = "1.44", features = ["test-util", "macros", "rt"] }

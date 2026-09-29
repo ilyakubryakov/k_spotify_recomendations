@@ -4,7 +4,7 @@
 //! for "this is the thing you act on". Everything informational is grey; only
 //! status uses colour, so colour stays meaningful.
 
-use super::app::{App, Busy, FeedLine, Focus, Tab};
+use super::app::{App, Busy, FeedLine, Focus, Tab, UpdatePrompt};
 use crate::i18n::Lang;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -73,6 +73,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     if app.show_help {
         render_help(frame, app, area);
+    }
+    if app.update.is_open() {
+        render_update(frame, app, area);
     }
     // The picker is modal and painted last so it sits above everything.
     if app.wizard_open {
@@ -917,6 +920,152 @@ fn render_language_wizard(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+/// The self-update dialog.
+///
+/// Four states share one box on purpose: the user's eye stays in one place
+/// from "there is a new version" through to "it is installed", instead of
+/// chasing a notification that moves.
+fn render_update(frame: &mut Frame, app: &App, area: Rect) {
+    let t = app.t();
+    let width = 58.min(area.width.saturating_sub(4));
+
+    let key = |k: &str, what: &str| {
+        Line::from(vec![
+            Span::styled(format!("  {k:<8}"), Style::default().fg(ACCENT)),
+            Span::styled(what.to_string(), Style::default().fg(FG)),
+        ])
+    };
+
+    let (title, lines) = match &app.update {
+        UpdatePrompt::Available(release) => {
+            let mut lines = vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!("  {} ", t.update_current),
+                        Style::default().fg(MUTED),
+                    ),
+                    Span::styled(crate::VERSION, Style::default().fg(FG)),
+                    Span::styled("  →  ", Style::default().fg(MUTED)),
+                    Span::styled(
+                        release.version.to_string(),
+                        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(""),
+            ];
+            // Two lines of notes: enough to tell a bugfix from a rewrite,
+            // not enough to push the keys off the box.
+            for note in release.summary(2).lines() {
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "  {}",
+                        truncate_line(note, width.saturating_sub(4) as usize)
+                    ),
+                    Style::default().fg(MUTED),
+                )));
+            }
+            lines.push(Line::from(""));
+            lines.push(key("Enter", t.update_install));
+            lines.push(key("s", t.update_skip));
+            lines.push(key("Esc", t.update_later));
+            (t.update_title, lines)
+        }
+        UpdatePrompt::Downloading { done, total } => {
+            let progress = match total {
+                Some(total) if *total > 0 => format!("{}%", done * 100 / total),
+                _ => format!("{:.1} MB", *done as f64 / 1_048_576.0),
+            };
+            (
+                t.update_title,
+                vec![
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled(
+                            format!("  {} ", t.update_downloading),
+                            Style::default().fg(FG),
+                        ),
+                        Span::styled(progress, Style::default().fg(ACCENT)),
+                    ]),
+                ],
+            )
+        }
+        UpdatePrompt::Installed(version) => (
+            t.update_title,
+            vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("  {} {}", t.update_installed, version),
+                    Style::default().fg(ACCENT),
+                )),
+                Line::from(Span::styled(
+                    format!("  {}", t.update_restart),
+                    Style::default().fg(MUTED),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("  {}", t.any_key_closes),
+                    Style::default().fg(FAINT),
+                )),
+            ],
+        ),
+        UpdatePrompt::Failed(error) => (
+            t.update_failed,
+            vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!(
+                        "  {}",
+                        truncate_line(error, width.saturating_sub(4) as usize)
+                    ),
+                    Style::default().fg(ERROR),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("  {}", t.any_key_closes),
+                    Style::default().fg(FAINT),
+                )),
+            ],
+        ),
+        UpdatePrompt::Hidden => return,
+    };
+
+    // Sized to its contents: the four states have very different amounts to
+    // say, and a fixed box leaves the short ones mostly empty.
+    let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
+    let popup = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(if app.update.is_busy() {
+                    BORDER
+                } else {
+                    ACCENT_DIM
+                }))
+                .title(Span::styled(
+                    format!(" {title} "),
+                    Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                )),
+        ),
+        popup,
+    );
+}
+
+/// Cut a line to the popup's width on a character boundary.
+fn truncate_line(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    text.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
+}
+
 fn render_help(frame: &mut Frame, app: &App, area: Rect) {
     let t = app.t();
     let width = 62.min(area.width.saturating_sub(4));
@@ -959,6 +1108,7 @@ fn render_help(frame: &mut Frame, app: &App, area: Rect) {
         row("l", t.key_language),
         row("m", t.key_mode),
         row(",", t.key_settings),
+        row("Enter/s/Esc", t.key_update),
         Line::from(""),
         heading(t.help_moderation),
         row("f", t.key_keep),
@@ -988,4 +1138,91 @@ fn render_help(frame: &mut Frame, app: &App, area: Rect) {
         ),
         popup,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::tui::app::{App, UpdatePrompt};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use std::sync::Arc;
+
+    const EN_TITLE: &str = "Update available";
+
+    fn app() -> App {
+        let config = Config {
+            presets: crate::config::presets::builtin(),
+            ..Default::default()
+        };
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        App::new(Arc::new(config), None, tx)
+    }
+
+    fn rendered(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test terminal");
+        terminal
+            .draw(|frame| render(frame, app))
+            .expect("draws without panicking");
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn the_update_dialog_draws_the_version_it_is_offering() {
+        let mut app = app();
+        app.update = UpdatePrompt::Available(Box::new(crate::update::Release {
+            tag: "v9.9.9".into(),
+            version: crate::update::version::Version::parse("9.9.9").expect("parses"),
+            url: String::new(),
+            notes: "- a change worth having".into(),
+            prerelease: false,
+            published_at: None,
+        }));
+
+        let screen = rendered(&mut app, 120, 40);
+        assert!(screen.contains("9.9.9"), "the new version is not on screen");
+        assert!(
+            screen.contains(EN_TITLE),
+            "the dialog title is not on screen"
+        );
+    }
+
+    #[test]
+    fn every_update_dialog_state_survives_a_cramped_terminal() {
+        // Popup geometry is all saturating arithmetic; a terminal one row
+        // above the minimum is where an off-by-one would panic, and a panic
+        // in the draw path takes the whole UI down mid-frame.
+        for state in [
+            UpdatePrompt::Available(Box::new(crate::update::Release {
+                tag: "v9.9.9".into(),
+                version: crate::update::version::Version::parse("9.9.9").expect("parses"),
+                url: String::new(),
+                notes: "- a change".into(),
+                prerelease: false,
+                published_at: None,
+            })),
+            UpdatePrompt::Downloading {
+                done: 5,
+                total: Some(10),
+            },
+            UpdatePrompt::Downloading {
+                done: 5,
+                total: None,
+            },
+            UpdatePrompt::Installed("9.9.9".into()),
+            UpdatePrompt::Failed("a very long explanation ".repeat(20)),
+        ] {
+            let mut app = app();
+            app.update = state;
+            rendered(&mut app, 70, 18);
+            rendered(&mut app, 200, 60);
+        }
+    }
 }

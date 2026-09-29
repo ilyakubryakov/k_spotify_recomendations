@@ -72,6 +72,11 @@ fn restore_default_sigpipe() {}
 async fn run() -> i32 {
     let cli = Cli::parse();
 
+    // Sweep up a binary an earlier update had to leave behind. Only Windows
+    // can produce one (a running image cannot be deleted, only renamed), and
+    // it is a no-op everywhere else.
+    spotify_agent::update::install::cleanup_leftovers();
+
     // `completions` must work before any config exists.
     if let Some(Command::Completions { shell }) = &cli.command {
         commands::print_completions(*shell);
@@ -124,6 +129,9 @@ async fn run() -> i32 {
         tracing::warn!("{warning}");
     }
 
+    // Decided before `dispatch` consumes the parsed arguments.
+    let update_notice = UpdateNotice::for_run(&cli);
+
     // Ctrl-C must leave the terminal usable and the exit code honest. The
     // select below cancels the in-flight command; because every network call
     // is cancellation-safe at an await point, the worst case is an
@@ -132,6 +140,11 @@ async fn run() -> i32 {
         result = dispatch(cli, Arc::clone(&config), color, log_buffer) => result,
         _ = tokio::signal::ctrl_c() => Err(AgentError::Cancelled),
     };
+
+    // Only after the work is done, and never in its way.
+    if outcome.is_ok() {
+        update_notice.run(&config).await;
+    }
 
     match outcome {
         Ok(()) => 0,
@@ -215,7 +228,64 @@ async fn dispatch(
         Some(Command::History { limit, json }) => commands::history(config, limit, json).await,
         Some(Command::Cache { command }) => commands::cache(config, command).await,
         Some(Command::Config { command }) => commands::config_cmd(config, command),
+        Some(Command::Update(args)) => commands::update(config, args, use_color).await,
         Some(Command::Completions { .. }) => Ok(()), // handled earlier
+    }
+}
+
+/// Whether — and how — to mention a newer release once the command is done.
+///
+/// Three rules keep this from ever being in the way:
+///   * it runs *after* the command succeeded, so a slow or unreachable GitHub
+///     cannot delay or fail the work the user actually asked for;
+///   * it writes to stderr, so `--json` output stays machine-readable;
+///   * it stays quiet unless stderr is a terminal, so pipes, logs and CI
+///     transcripts are untouched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateNotice {
+    Skip,
+    /// Structured log line, and an install only if the config asked for one.
+    Unattended,
+    /// One line on stderr.
+    Interactive,
+}
+
+impl UpdateNotice {
+    fn for_run(cli: &Cli) -> Self {
+        if cli.no_update_check || cli.quiet {
+            return Self::Skip;
+        }
+        // The TUI has its own dialog and `update` is the check; `completions`
+        // must stay pure so its output can be sourced.
+        if matches!(
+            cli.command,
+            None | Some(Command::Tui)
+                | Some(Command::Update(_))
+                | Some(Command::Completions { .. })
+        ) {
+            return Self::Skip;
+        }
+        if cli.cron {
+            return Self::Unattended;
+        }
+        Self::Interactive
+    }
+
+    async fn run(self, config: &std::sync::Arc<Config>) {
+        use std::io::IsTerminal;
+
+        match self {
+            Self::Skip => {}
+            Self::Unattended => spotify_agent::update::unattended(config).await,
+            Self::Interactive => {
+                if !std::io::stderr().is_terminal() {
+                    return;
+                }
+                if let Some(notice) = spotify_agent::update::passive_notice(config).await {
+                    eprintln!("\n{notice}");
+                }
+            }
+        }
     }
 }
 
