@@ -33,6 +33,8 @@ REPO="${SPOTIFY_AGENT_REPO:-ilyakubryakov/k_spotify_recomendations}"
 VERSION="${SPOTIFY_AGENT_VERSION:-latest}"
 ASSET_BASE="${SPOTIFY_AGENT_ASSET_BASE:-}"
 SKIP_VERIFY="${SPOTIFY_AGENT_SKIP_VERIFY:-0}"
+# Used only to print a correct hint when the script was piped into `sh`.
+RAW_URL="https://raw.githubusercontent.com/${SPOTIFY_AGENT_REPO:-ilyakubryakov/k_spotify_recomendations}/main/packaging/install.sh"
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
@@ -374,7 +376,13 @@ if [ "$ON_PATH" = 0 ]; then
         info "open a new shell, or run:  . $rc"
     else
         warn "$BIN_DIR is not on your PATH."
-        info "add it with:   sh $0 --add-path"
+        # Piped into `sh`, $0 is "sh" -- printing "sh sh --add-path" helps
+        # nobody. Detect that and show the form the user actually invoked.
+        if [ -r "$0" ] && [ "$0" != sh ] && [ "$0" != "-sh" ]; then
+            info "add it with:   sh $0 --add-path"
+        else
+            info "add it with:   curl -fsSL $RAW_URL | sh -s -- --add-path"
+        fi
         info "or by hand:    export PATH=\"$BIN_DIR:\$PATH\""
     fi
 fi
