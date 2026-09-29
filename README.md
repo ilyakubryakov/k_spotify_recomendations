@@ -67,8 +67,9 @@ curl -fsSL .../install.sh | sh -s -- --add-path --schedule daily
 
 ### Building from source
 
-Prebuilt binaries exist for x86-64 and arm64 Linux (glibc and musl), Intel and
-Apple Silicon macOS, and x86-64 Windows. Anything else, build it yourself.
+Prebuilt binaries exist for x86-64 and arm64 Linux (glibc and musl), macOS as a
+single universal binary covering Apple Silicon and Intel, and x86-64 Windows.
+Anything else, build it yourself.
 
 You need a **Rust toolchain** and a **C compiler** — SQLite is compiled in
 rather than linked, which is why the finished binary has no runtime

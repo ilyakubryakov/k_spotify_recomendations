@@ -122,7 +122,9 @@ case "$PLATFORM" in
         CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP"
         DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/$APP" ;;
     macos)
-        TRIPLE="$TRIPLE_ARCH-apple-darwin"
+        # One universal binary covers both Apple Silicon and Intel, so the
+        # architecture does not enter into the asset name.
+        TRIPLE="universal-apple-darwin"
         CONFIG_DIR="$HOME/Library/Application Support/$APP"
         DATA_DIR="$CONFIG_DIR" ;;
 esac
