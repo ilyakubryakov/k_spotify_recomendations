@@ -195,5 +195,9 @@ jobs:
             irm https://raw.githubusercontent.com/${{ github.repository }}/main/packaging/install.ps1 | iex
             ```
 
+            Already running 0.1.3 or later? `spotify-agent update` does the same
+            thing without the installer.
+
             Re-running the installer upgrades in place. `SHA256SUMS` covers every
-            archive below; the installers verify it automatically.
+            archive below; the installers and the built-in updater all verify
+            against it.

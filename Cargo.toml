@@ -1,6 +1,6 @@
 [package]
 name          = "spotify-agent"
-version       = "0.1.2"
+version       = "0.1.3"
 edition       = "2024"
 # The real floor, verified by the MSRV job -- not a guess. Edition 2024 alone
 # would need only 1.85; the dependency tree raises it:
