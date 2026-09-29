@@ -79,7 +79,7 @@ anyhow    = "1.0"
 # --- misc ----------------------------------------------------------------
 chrono      = { version = "0.4", features = ["serde", "clock"] }
 directories = "5.0"
-base64      = "0.22"
+base64      = "0.23"
 sha2        = "0.10"
 rand        = "0.8"
 unicode-normalization = "0.1"
