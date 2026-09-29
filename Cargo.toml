@@ -52,19 +52,19 @@ url = "2.5"
 # --- serialisation -------------------------------------------------------
 serde      = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-toml       = "0.8"
+toml       = "1.1"
 
 # --- CLI / TUI -----------------------------------------------------------
 clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.5"
 # ratatui re-exports the exact crossterm it was built against; we import it as
 # `ratatui::crossterm` in code so the two can never drift apart.
-ratatui   = { version = "0.29", features = ["crossterm"] }
-crossterm = "0.28"
+ratatui   = { version = "0.30", features = ["crossterm"] }
+crossterm = "0.29"
 
 # --- persistence ---------------------------------------------------------
 # "bundled" compiles SQLite from source: no system libsqlite3 requirement.
-rusqlite = { version = "0.32", features = ["bundled", "chrono", "backup"] }
+rusqlite = { version = "0.40", features = ["bundled", "chrono", "backup"] }
 
 # --- observability -------------------------------------------------------
 tracing = "0.1"
@@ -78,10 +78,10 @@ anyhow    = "1.0"
 
 # --- misc ----------------------------------------------------------------
 chrono      = { version = "0.4", features = ["serde", "clock"] }
-directories = "5.0"
-base64      = "0.22"
-sha2        = "0.10"
-rand        = "0.8"
+directories = "6.0"
+base64      = "0.23"
+sha2        = "0.11"
+rand        = "0.10"
 unicode-normalization = "0.1"
 
 [target.'cfg(unix)'.dependencies]
