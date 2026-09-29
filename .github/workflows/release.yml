@@ -34,11 +34,19 @@ jobs:
             musl: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04
+            linux_cross: true
             cross: true
+          # Both macOS slices are built on Apple Silicon. The Intel-hosted
+          # runners (macos-13) are being retired and now sit queued for
+          # ~30 minutes; Xcode on arm64 carries the x86_64 SDK slice, so
+          # cross-compiling is both faster and not on a deprecation path.
+          # Marked `cross` so the smoke test is skipped -- the runner cannot
+          # execute an x86_64 binary without Rosetta.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
+            cross: true
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-latest
           - target: x86_64-pc-windows-msvc
             os: windows-latest
 
@@ -62,8 +70,11 @@ jobs:
           sudo apt-get install -y musl-tools
           echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
 
+      # `linux_cross` rather than `cross`: `cross` only means "this binary
+      # cannot run on the runner, so skip the smoke test", and now covers the
+      # macOS x86_64 job too -- which has no apt.
       - name: Install aarch64 cross toolchain
-        if: matrix.cross
+        if: matrix.linux_cross
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
