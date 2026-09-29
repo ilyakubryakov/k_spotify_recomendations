@@ -36,17 +36,14 @@ jobs:
             os: ubuntu-22.04
             linux_cross: true
             cross: true
-          # Both macOS slices are built on Apple Silicon. The Intel-hosted
-          # runners (macos-13) are being retired and now sit queued for
-          # ~30 minutes; Xcode on arm64 carries the x86_64 SDK slice, so
-          # cross-compiling is both faster and not on a deprecation path.
-          # Marked `cross` so the smoke test is skipped -- the runner cannot
-          # execute an x86_64 binary without Rosetta.
-          - target: x86_64-apple-darwin
+          # One universal binary rather than two per-arch ones: it runs on
+          # both Apple Silicon and Intel, so the installer never has to pick
+          # and a user who moves machines keeps the same download. Built on
+          # Apple Silicon -- the Intel-hosted runners are being retired, and
+          # Xcode on arm64 carries both SDK slices.
+          - target: universal-apple-darwin
             os: macos-latest
-            cross: true
-          - target: aarch64-apple-darwin
-            os: macos-latest
+            universal: true
           - target: x86_64-pc-windows-msvc
             os: windows-latest
 
@@ -55,7 +52,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.universal && 'x86_64-apple-darwin,aarch64-apple-darwin' || matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -82,7 +79,21 @@ jobs:
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
       - name: Build
+        if: '!matrix.universal'
         run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # `lipo` welds the two single-arch binaries into one fat Mach-O.
+      - name: Build universal binary
+        if: matrix.universal
+        run: |
+          set -eu
+          cargo build --release --locked --target x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+          mkdir -p "target/${{ matrix.target }}/release"
+          lipo -create -output "target/${{ matrix.target }}/release/$BIN" \
+            "target/x86_64-apple-darwin/release/$BIN" \
+            "target/aarch64-apple-darwin/release/$BIN"
+          lipo -info "target/${{ matrix.target }}/release/$BIN"
 
       # Only native targets can run their own tests; the cross-built ones are
       # covered by the CI matrix on their own platforms.
