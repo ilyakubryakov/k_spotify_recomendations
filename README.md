@@ -14,6 +14,12 @@ spotify-agent generate focus     # one playlist, right now
 spotify-agent --cron generate    # what the timer runs
 ```
 
+![The taste profile the agent builds from your library and play history](img/tui-profile.png)
+
+That profile is built entirely from local data, and it is what goes into the
+prompt — not a genre label, but the artists you actually return to, the era you
+sit in, the split between scripts, and what you have had on repeat this month.
+
 ## What it does
 
 - **Learns from a real history.** Liked Songs, top tracks and artists across all
@@ -139,6 +145,22 @@ spotify-agent                  # TUI
 The TUI's **Setup** tab shows the same instructions with your own paths filled
 in, and marks what is still missing.
 
+![The Setup tab, showing which credentials are present and how to get the rest](img/tui-setup.png)
+
+## The interface
+
+The TUI is the main way to drive it: pick a preset on the left, press Enter,
+watch the pipeline run, then review what came back. Mouse works too — click a
+preset or a track, scroll with the wheel.
+
+![The main view: preset rail, run options, activity feed and pipeline state](img/tui-tracks.png)
+
+`?` lists every key. The bottom group is the review pass: with a generated list
+on screen, `f` saves a track to Liked Songs, `x` drops it from the playlist, `b`
+bans the artist for good. Each one is a signal the next run reads.
+
+![The key reference overlay](img/tui-keys.png)
+
 ## Presets
 
 A preset is mostly a *brief* — a paragraph handed to the model describing the
@@ -192,8 +214,9 @@ but over-reports (a long pause looks like a skip), so an inferred skip is
 weighted lower than an explicit thumbs-down, and every signal decays with a
 configurable half-life.
 
-In the TUI, `f` saves a track to Liked Songs, `x` removes it, `b` bans the
-artist for good. `spotify-agent feedback` shows what it has concluded.
+The review keys above feed the same store, weighted higher than the inferred
+signals because you meant them. `spotify-agent feedback` shows what it has
+concluded so far.
 
 ## Background runs
 
@@ -248,6 +271,8 @@ English, Russian, Polish and Lithuanian. The TUI asks on first run and
 remembers; change it later with `,` in the TUI or `spotify-agent config
 language ru`. Only the interface is translated — logs and `--json` output stay
 in English so tooling and bug reports remain greppable.
+
+![The first-run language picker](img/tui-language.png)
 
 Polish and Lithuanian were not written by native speakers. Corrections welcome.
 
