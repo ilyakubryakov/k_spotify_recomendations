@@ -1194,7 +1194,10 @@ mod tests {
         let error = cfg.validate().expect_err("should be rejected");
         let rendered = error.to_string();
         assert!(rendered.contains("api_key_env"), "{rendered}");
-        assert!(rendered.contains("api_key"), "should point at the right field: {rendered}");
+        assert!(
+            rendered.contains("api_key"),
+            "should point at the right field: {rendered}"
+        );
 
         // A real variable name is fine.
         cfg.claude.api_key_env = Some("ANTHROPIC_API_KEY".into());
@@ -1214,7 +1217,10 @@ mod tests {
             ..Default::default()
         }];
         let error = cfg.validate().expect_err("should be rejected");
-        assert!(error.to_string().contains("llm.fallbacks[0].api_key_env"), "{error}");
+        assert!(
+            error.to_string().contains("llm.fallbacks[0].api_key_env"),
+            "{error}"
+        );
     }
 
     #[test]
