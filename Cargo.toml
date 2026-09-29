@@ -1,0 +1,108 @@
+[package]
+name          = "spotify-agent"
+version       = "0.1.0"
+edition       = "2024"
+rust-version  = "1.85"
+description   = "Autonomous AI music curation agent: Spotify + Anthropic Claude"
+license       = "MIT"
+readme        = "README.md"
+default-run   = "spotify-agent"
+
+[lib]
+name = "spotify_agent"
+path = "src/lib.rs"
+
+[[bin]]
+name = "spotify-agent"
+path = "src/main.rs"
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+[dependencies]
+
+# --- async runtime -------------------------------------------------------
+# "rt-multi-thread" : worker pool for concurrent Spotify search resolution
+# "macros"          : #[tokio::main]
+# "signal"          : graceful Ctrl-C shutdown in headless mode
+# "net"             : loopback listener for the OAuth callback (no extra web dep)
+# "time"            : backoff sleeps / TUI tick timer
+# "sync"            : mpsc channel carrying pipeline events into the TUI
+tokio = { version = "1.44", features = [
+    "rt-multi-thread", "macros", "signal", "net", "io-util", "time", "sync", "fs",
+] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+# --- HTTP ----------------------------------------------------------------
+# rustls-tls  : no OpenSSL build dependency, reproducible static-ish builds
+# json        : serde (de)serialisation of bodies
+# stream      : SSE byte stream for Anthropic streaming responses
+# gzip/brotli : Spotify sends large JSON pages; compression is a real win
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls", "json", "stream", "gzip", "brotli", "charset", "http2",
+] }
+url = "2.5"
+
+# --- serialisation -------------------------------------------------------
+serde      = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+toml       = "0.8"
+
+# --- CLI / TUI -----------------------------------------------------------
+clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4.5"
+# ratatui re-exports the exact crossterm it was built against; we import it as
+# `ratatui::crossterm` in code so the two can never drift apart.
+ratatui   = { version = "0.29", features = ["crossterm"] }
+crossterm = "0.28"
+
+# --- persistence ---------------------------------------------------------
+# "bundled" compiles SQLite from source: no system libsqlite3 requirement.
+rusqlite = { version = "0.32", features = ["bundled", "chrono", "backup"] }
+
+# --- observability -------------------------------------------------------
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std", "fmt", "env-filter", "ansi", "json", "registry", "time",
+] }
+
+# --- errors --------------------------------------------------------------
+thiserror = "2.0"
+anyhow    = "1.0"
+
+# --- misc ----------------------------------------------------------------
+chrono      = { version = "0.4", features = ["serde", "clock"] }
+directories = "5.0"
+base64      = "0.22"
+sha2        = "0.10"
+rand        = "0.8"
+unicode-normalization = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1.44", features = ["test-util", "macros", "rt"] }
+
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+strip         = "symbols"
+panic         = "unwind"   # NOT "abort": the TUI needs its panic hook to run
+                           # so the terminal is always restored.
+
+[profile.dev]
+opt-level = 1              # rusqlite/bundled is unusable at opt-level 0
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used  = "deny"
+expect_used  = "warn"
+panic        = "deny"
+indexing_slicing = "warn"

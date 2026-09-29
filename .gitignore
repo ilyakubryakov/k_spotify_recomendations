@@ -1,0 +1,27 @@
+/target
+
+# Local agent/editor state. The architecture notes live in the committed
+# CLAUDE.md at the repo root so a fresh clone still gets them.
+/.claude/
+/.vscode/
+/.idea/
+
+# Runtime data -- never belongs in the repo.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+tokens.json
+preferences.json
+
+# Local config. config.example.toml is the tracked reference.
+/config.toml
+
+# Export output lands in the working directory by default.
+*.m3u8
+*.csv
+!config.example.toml
+
+# Build/verification scratch
+/dist/
+*.tar.gz
+*.zip

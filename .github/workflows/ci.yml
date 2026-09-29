@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail the build on a warning rather than letting it accumulate.
+  RUSTFLAGS: -D warnings
+
+concurrency:
+  # A new push supersedes an in-flight run on the same ref.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Formatting and lints are platform-independent, so they run once rather
+  # than three times.
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --all-features
+
+  test:
+    name: test / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The suite needs no network: every HTTP call is served by the scripted
+      # mock server in tests/support.
+      - run: cargo test --all-features
+
+  # The minimum supported version is a promise in Cargo.toml; check it holds.
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: msrv
+        run: echo "version=$(grep '^rust-version' Cargo.toml | head -1 | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets
+
+  # The installers are shell and PowerShell, so nothing else type-checks them.
+  packaging:
+    name: installer scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck install.sh
+        run: shellcheck --shell=sh packaging/install.sh
+      - name: POSIX sh parse check
+        run: sh -n packaging/install.sh
+      - name: PowerShell parse check
+        shell: pwsh
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/packaging/install.ps1", [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { $_.Message }; exit 1 }
+          Write-Host "install.ps1 parses cleanly"
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $r = Invoke-ScriptAnalyzer -Path packaging/install.ps1 -Severity Error,Warning
+          if ($r) { $r | Format-Table -AutoSize | Out-String | Write-Host; exit 1 }
+          Write-Host "PSScriptAnalyzer clean"
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

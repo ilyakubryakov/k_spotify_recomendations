@@ -1,0 +1,420 @@
+# ===========================================================================
+#  spotify-agent — configuration
+#
+#  Location:
+#    Linux    ~/.config/spotify-agent/config.toml
+#    macOS    ~/Library/Application Support/spotify-agent/config.toml
+#    Windows  %APPDATA%\spotify-agent\config\config.toml
+#
+#  Every value here has a compiled-in default; delete anything you do not
+#  want to override. Precedence, last wins:
+#
+#      built-in defaults  →  this file  →  environment  →  CLI flags
+#
+#  Environment overrides use SPOTIFY_AGENT__<SECTION>__<FIELD>, e.g.
+#      SPOTIFY_AGENT__CLAUDE__MODEL=claude-opus-5
+#      SPOTIFY_AGENT__DEFAULTS__SIZE=50
+#  plus the well-known names ANTHROPIC_API_KEY, SPOTIFY_CLIENT_ID,
+#  SPOTIFY_CLIENT_SECRET and SPOTIFY_REDIRECT_URI.
+#
+#  The agent remembers everything it has recommended, in SQLite. Inspect it
+#  with `spotify-agent recommended`, and make something eligible again with
+#  `spotify-agent forget --artist "Name"`.
+#
+#  SECRETS: prefer environment variables. If you do put a key in this file,
+#  keep it at mode 0600 — the agent warns on startup if it is not.
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+[general]
+# ---------------------------------------------------------------------------
+
+# "error" | "warn" | "info" | "debug" | "trace", or a full RUST_LOG directive
+# such as "info,spotify_agent::spotify=debug". RUST_LOG overrides this.
+log_level = "info"
+
+# "text" for humans, "json" for cron/systemd/log shipping.
+# --cron implies "json" unless --log-format says otherwise.
+log_format = "text"
+
+# "auto" (respects NO_COLOR and TTY detection) | "always" | "never"
+color = "auto"
+
+# Interface language: "en" | "ru" | "pl" | "lt".
+# Setting it here pins the choice and suppresses the first-run picker in the
+# TUI. Leave it commented out to pick in the UI (press `,`), which saves to
+# preferences.json in the data dir. Only the interface is translated — logs and
+# --json output stay in English so tooling and bug reports remain greppable.
+# language = "en"
+
+# Override where the SQLite cache and token store live.
+# data_dir = "/var/lib/spotify-agent"
+
+
+# ---------------------------------------------------------------------------
+[spotify]
+# ---------------------------------------------------------------------------
+
+# From https://developer.spotify.com/dashboard — create an app, then add the
+# redirect URI below to its settings. The client id is not a secret.
+# client_id = "0123456789abcdef0123456789abcdef"
+
+# OPTIONAL and normally omitted. Leaving it unset selects the PKCE flow, which
+# is the correct choice for a desktop binary: there is no secret to leak.
+# Setting it switches to the confidential-client flow (PKCE still applies).
+# client_secret = "…"
+
+# The loopback listener that receives the OAuth redirect. Spotify requires an
+# explicit-IP loopback here; "localhost" is rejected when registering the app.
+# Register exactly http://127.0.0.1:8888/callback in the dashboard.
+redirect_host = "127.0.0.1"
+redirect_port = 8888
+redirect_path = "/callback"
+
+api_base      = "https://api.spotify.com/v1"
+accounts_base = "https://accounts.spotify.com"
+
+# ISO-3166-1 alpha-2. Affects search results and track availability. Leave it
+# unset to let Spotify infer the market from your account — usually correct.
+# market = "DE"
+
+timeout_secs = 30
+max_retries  = 5
+
+# Concurrent in-flight requests while resolving suggestions. Spotify rate
+# limits per app over a rolling window; 4–6 is a safe ceiling, 1 is safest.
+concurrency = 4
+
+
+# ---------------------------------------------------------------------------
+[claude]
+# ---------------------------------------------------------------------------
+
+# Prefer the environment. Uncomment only if you accept a key on disk.
+# api_key = "sk-ant-…"
+api_key_env = "ANTHROPIC_API_KEY"
+
+base_url          = "https://api.anthropic.com"
+anthropic_version = "2023-06-01"
+
+# Model id. Use the exact id — never append a date suffix.
+#   claude-opus-5    most capable general model (default)
+#   claude-sonnet-5  cheaper, still strong at this task
+#   claude-haiku-4-5 cheapest; noticeably weaker at taste reasoning
+model = "claude-opus-5"
+
+# Response cap. A 50-track structured payload is roughly 6–8k tokens, so the
+# default leaves ample headroom. Raise it if you generate very large playlists.
+max_tokens = 16000
+
+# Reasoning depth and total token spend: "low" | "medium" | "high" | "xhigh" | "max".
+# Curation benefits from real deliberation; "high" is the sweet spot, "low" is
+# noticeably more generic.
+effort = "high"
+
+# "adaptive" (recommended — the model decides how much to think) or "disabled".
+# There is no thinking token budget on current models; effort replaces it.
+# "disabled" is rejected by the API at effort "xhigh"/"max".
+thinking = "adaptive"
+
+# "summarized" streams a readable reasoning summary into the TUI.
+# "omitted" is the API default and leaves thinking text empty.
+thinking_display = "summarized"
+
+# Stream the response. Recommended: gives the TUI live progress and removes any
+# risk of an HTTP idle timeout on a long turn.
+stream = true
+
+# Optional server-side refusal fallbacks, tried in order. Leave empty to
+# disable. Only useful if a preset brief trips a safety classifier.
+fallback_models = []
+
+timeout_secs = 300
+max_retries  = 4
+
+
+# ---------------------------------------------------------------------------
+# [[llm.fallbacks]] — backup models
+# ---------------------------------------------------------------------------
+# The [claude] section above is the PRIMARY backend. List any number of
+# fallbacks here; they are tried in order when the primary cannot answer:
+# it is unreachable, out of retries, missing a key, refuses the request, or
+# returns output that does not match the schema. Every fallback is logged.
+#
+# `provider` may be "anthropic", "openai", "ollama" or "gemini" — including in
+# the [claude] section, so you can run OpenAI or a local model as primary.
+#
+# A backend with no usable key is skipped at startup with a warning rather than
+# failing the run, so it is safe to list providers you have not signed up for.
+#
+# Model ids change often; set whatever your account actually has access to.
+#
+# [[llm.fallbacks]]
+# provider    = "openai"
+# model       = "gpt-5.1"
+# api_key_env = "OPENAI_API_KEY"
+#
+# [[llm.fallbacks]]
+# provider    = "gemini"
+# model       = "gemini-3-pro"
+# api_key_env = "GEMINI_API_KEY"
+#
+# Fully local, no key and no network egress. Needs a model large enough to
+# follow a JSON schema; 8B-class models tend to produce invalid output, which
+# the chain will reject and fall past.
+# [[llm.fallbacks]]
+# provider = "ollama"
+# model    = "llama3.3:70b"
+# base_url = "http://127.0.0.1:11434"
+
+
+# ---------------------------------------------------------------------------
+[feedback]
+# ---------------------------------------------------------------------------
+# The closed loop: the agent watches what happened to its picks and lets that
+# steer the next run. Inspect with `spotify-agent feedback`.
+
+enabled = true
+
+# Spotify exposes no skip event. A skip is INFERRED: if the next play starts
+# before this fraction of the track had elapsed, it was cut short. The
+# inference over-reports (a long pause looks like a skip), which is why an
+# inferred skip weighs less than an explicit thumbs-down below.
+skip_ratio = 0.6
+
+# A track sitting unplayed in a managed playlist this long earns a mild
+# negative. 0 disables the check.
+stale_after_days = 21
+
+# Signals lose half their weight over this many days. Taste moves; a skip from
+# last year should not still be steering picks. 0 disables decay.
+half_life_days = 120.0
+
+# Signal weights. Positive is approval.
+weight_liked   = 3.0    # added to Liked Songs after we recommended it
+weight_played  = 0.6    # played through
+weight_skipped = -1.0   # inferred skip (see skip_ratio)
+weight_removed = -3.0   # deleted from the playlist by hand
+weight_stale   = -0.4   # sat unplayed past stale_after_days
+weight_up      = 2.5    # explicit thumbs up in the TUI
+weight_down    = -2.5   # explicit thumbs down in the TUI
+
+# An artist scoring at or above boost_threshold is described to the model as
+# resonating; at or below avoid_threshold it is named as one to avoid.
+boost_threshold = 2.0
+avoid_threshold = -2.0
+
+# Set false to keep collecting signals without letting them influence
+# generation — useful while you decide whether the weights suit you.
+apply_to_prompt = true
+
+
+# ---------------------------------------------------------------------------
+[notifications]
+# ---------------------------------------------------------------------------
+# For unattended runs. Best-effort: a notification failure never changes the
+# exit code or the playlist.
+
+# Uses notify-send (Linux), osascript (macOS) or a PowerShell balloon tip
+# (Windows) — all built in, no extra package.
+desktop    = true
+on_success = true
+on_failure = true
+
+# Telegram, Discord, Slack, or any endpoint accepting a JSON POST.
+# "auto" detects the flavour from the host.
+# webhook_url      = "https://api.telegram.org/bot<TOKEN>/sendMessage"
+webhook_kind     = "auto"
+# telegram_chat_id = "123456789"
+timeout_secs     = 15
+
+
+# ---------------------------------------------------------------------------
+[storage]
+# ---------------------------------------------------------------------------
+
+# Defaults to <data_dir>/history.sqlite3
+# path = "/var/lib/spotify-agent/history.sqlite3"
+
+# Retention. Spotify only ever returns your last 50 plays, so this local
+# history is the only long-run frequency signal that exists — keep it generous.
+# 0 disables pruning.
+retain_plays_days = 730
+
+# The recommendation log is what stops the agent recommending the same tracks
+# over and over. 0 = keep forever (the default, and required if
+# defaults.exclude_recent_days is also 0). If you set a number here, keep it
+# comfortably larger than defaults.exclude_recent_days or the memory is pruned
+# out from under the exclusion rule.
+retain_recommendations_days = 0
+
+# `generate` skips its implicit sync if one ran this recently.
+sync_min_interval_mins = 30
+
+
+# ---------------------------------------------------------------------------
+[defaults]
+# ---------------------------------------------------------------------------
+# Baseline run parameters. Presets override these; CLI flags override presets.
+
+preset = "discover"
+size   = 30
+
+# "replace" overwrites the playlist each run.
+# "append"  adds and de-duplicates, growing without bound.
+# "rolling" keeps the playlist at exactly `size`: new picks are added and the
+#           least-engaging incumbents evicted, so it turns over gradually
+#           instead of washing away material you have not reached yet.
+strategy = "replace"
+
+# Supported placeholders: {preset} {date} {datetime} {title}
+# {title} is the name Claude proposes for the set.
+playlist_name        = "AI · {preset}"
+playlist_description = "Curated by spotify-agent · {datetime}"
+playlist_public      = false
+
+# "english" | "russian" | "mixed" | "any"
+# Enforced twice: as an instruction in the prompt, and as a script-based filter
+# on the resolved Spotify metadata.
+language = "any"
+
+# ANTI-REPEAT, part 1 — track level.
+# Do not re-suggest anything already recommended within this many days.
+# 0 means FOREVER: nothing that has ever landed in a playlist is offered again.
+# That is the default, and it is what you want unless your library is small.
+exclude_recent_days = 0
+
+# ANTI-REPEAT, part 2 — artist level.
+# Do not recommend ANY track by an artist used within this many days.
+# Track-level exclusion alone still lets every run come back with a different
+# song by the same handful of artists, which is what "going in circles"
+# actually feels like in practice. 0 disables the cooldown.
+# Artists on cooldown are also named in the prompt, so the model spends its
+# slots on something new instead of having picks silently dropped.
+artist_cooldown_days = 21
+
+# Exclude your Liked Songs from suggestions (you already have them).
+exclude_saved = true
+
+# Exclude anything in your play history. Aggressive — it rules out re-listening
+# to something you loved a year ago — so it is off by default.
+exclude_played = false
+
+# Cap tracks per artist so one act cannot dominate the playlist.
+max_per_artist = 2
+
+# 0–10. How far from your established taste to reach.
+# 0  = well-known material you may already half-recognise
+# 5  = about half the set new to someone with your profile
+# 10 = deep underground; small labels, short-lived projects, regional scenes
+# Shapes the prompt directly.
+discovery_level = 5
+
+# Rolling strategy only.
+# Cap on evictions per run, so one burst of negative feedback cannot flush the
+# whole playlist.
+rolling_max_evictions = 10
+# A track added within this many days is never evicted — it has not had a fair
+# hearing yet. This is what stops a rolling buffer discarding unplayed material.
+rolling_grace_days = 7
+
+# Ask Claude for size × oversample candidates. Some will not exist on Spotify
+# or will fail a filter, and a second round-trip is the expensive thing to
+# avoid. 1.8 typically lands the requested count in one pass.
+oversample = 1.8
+
+# How much of the profile goes into the prompt.
+profile_top_artists = 40
+profile_top_tracks  = 40
+profile_top_genres  = 20
+
+# Cap on the exclusion list sent to the model (newest first). This is the
+# largest block in the prompt; 400 lines is roughly 6k tokens.
+prompt_exclusion_limit = 400
+
+
+# ---------------------------------------------------------------------------
+[filters]
+# ---------------------------------------------------------------------------
+# Global filters, applied to resolved Spotify metadata after the model has
+# answered. Presets may narrow these further; preset blocklists are additive,
+# so a preset can never un-block something blocked here.
+
+# Case-insensitive substring match against the artist's Spotify genre tags.
+# An artist with no genre tags at all passes an include list — otherwise you
+# would silently filter out exactly the obscure material you asked for.
+genres_include = []
+genres_exclude = []
+
+# If artists_allow is non-empty, only those artists are permitted.
+artists_allow = []
+artists_block = []
+
+# Spotify popularity, 0–100.
+# min_popularity = 5
+# max_popularity = 75
+
+# false rejects explicit-tagged recordings.
+# allow_explicit = true
+
+# 0 = unset.
+min_duration_secs = 0
+max_duration_secs = 0
+
+
+# ===========================================================================
+#  PRESETS
+#
+#  Presets defined here are merged with the built-ins (discover, road_trip,
+#  focus, workout, late_night, ru_wave, on_repeat); a preset defined here with
+#  a built-in name replaces it entirely.
+#
+#  `brief` is the highest-leverage field in this file — it is handed to Claude
+#  verbatim and is what actually shapes the selection. Describe the listening
+#  *situation*, not a list of genres: naming genres collapses the model's range
+#  and it starts returning the canonical five bands of that genre instead of
+#  reading your profile.
+# ===========================================================================
+
+[presets.commute]
+label = "Commute — 40 minutes, headphones, morning"
+brief = """
+Build a set for a 40-minute morning commute on headphones, in a city, on foot \
+and underground. It has to survive background noise without being shouty: \
+mid-tempo, clear production, strong low end, and enough momentum to keep the \
+walk moving. Start gently — the listener has just left the house — and reach \
+full energy by the third or fourth track. Avoid anything that demands close \
+attention to lyrics, and avoid long ambient intros that get lost under traffic.
+"""
+moods = ["propulsive", "bright", "urban"]
+size = 12
+strategy = "replace"
+max_per_artist = 1
+language = "any"
+
+[presets.commute.filters]
+# Nothing too obscure: a commute playlist should not be a discovery exercise.
+min_popularity = 20
+max_duration_secs = 420
+
+
+[presets.dinner]
+label = "Dinner — warm, unobtrusive, nothing jarring"
+brief = """
+Curate background music for having friends over for dinner. It should be warm \
+and inviting without ever pulling focus from conversation: no sudden dynamic \
+jumps, no aggressive percussion, no tracks with a hook so strong that people \
+stop talking. Soul, jazz, bossa, folk, warm electronic and singer-songwriter \
+material all work. Keep the emotional register generous rather than melancholy.
+"""
+moods = ["warm", "convivial", "unhurried"]
+size = 45
+# A dinner playlist can revisit a reliable artist sooner than a discovery run.
+artist_cooldown_days = 7
+playlist_name = "AI · dinner · {date}"
+max_per_artist = 2
+
+[presets.dinner.filters]
+allow_explicit = false
+genres_exclude = ["metal", "hardcore", "drum and bass", "gabber"]
