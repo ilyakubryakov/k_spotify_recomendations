@@ -96,8 +96,8 @@ commented `config.toml`.
 | Windows 11 x64  | yes (MSVC)    | `schtasks` task registered, queried, removed |
 
 All three were exercised on real hardware, including the installers. Windows
-testing runs through the libvirt VM described in `win11-vm-handoff.md`; it has
-VS Build Tools 2022 and rustup installed under the user profile.
+testing runs through a local libvirt VM with VS Build Tools 2022 and rustup
+installed under the user profile.
 
 Four bugs only Windows could find, all now covered by tests:
 

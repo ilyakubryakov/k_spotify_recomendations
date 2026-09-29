@@ -1,8 +1,9 @@
 /target
 
-# Local agent/editor state, kept out of the repo.
+# Local agent/editor state and machine-specific notes, kept out of the repo.
 /.claude/
 /CLAUDE.md
+/win11-vm-handoff.md
 /.vscode/
 /.idea/
 
