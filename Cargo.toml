@@ -58,7 +58,7 @@ crossterm = "0.28"
 
 # --- persistence ---------------------------------------------------------
 # "bundled" compiles SQLite from source: no system libsqlite3 requirement.
-rusqlite = { version = "0.32", features = ["bundled", "chrono", "backup"] }
+rusqlite = { version = "0.40", features = ["bundled", "chrono", "backup"] }
 
 # --- observability -------------------------------------------------------
 tracing = "0.1"
