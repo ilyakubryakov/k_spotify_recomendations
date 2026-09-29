@@ -191,11 +191,11 @@ impl SpotifyClient {
         while let Some(path) = next {
             let page: Page<T> = self.send::<_, ()>(Method::GET, &path, None).await?;
             out.extend(page.items);
-            if let Some(max) = max_items {
-                if out.len() >= max {
-                    out.truncate(max);
-                    break;
-                }
+            if let Some(max) = max_items
+                && out.len() >= max
+            {
+                out.truncate(max);
+                break;
             }
             next = page.next;
         }

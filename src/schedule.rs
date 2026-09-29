@@ -182,7 +182,7 @@ mod platform {
         format!(
             "[Unit]\n\
              Description=spotify-agent — generate an AI-curated playlist\n\
-             Documentation=https://github.com/balancy/spotify-agent\n\
+             Documentation=https://github.com/ilyakubryakov/k_spotify_recomendations\n\
              After=network-online.target\n\
              Wants=network-online.target\n\
              \n\

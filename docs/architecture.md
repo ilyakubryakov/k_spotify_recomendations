@@ -1,4 +1,4 @@
-# spotify-agent — working notes
+# Architecture notes
 
 Rust CLI/TUI that curates Spotify playlists with an LLM. Read this before
 changing anything; it records the decisions that aren't obvious from the code.

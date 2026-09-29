@@ -819,11 +819,10 @@ impl Storage {
                         })
                         .collect();
                 }
-                if stat.track.artists.is_empty() {
-                    if let Some(line) = fallback_names.get(&stat.track.id) {
+                if stat.track.artists.is_empty()
+                    && let Some(line) = fallback_names.get(&stat.track.id) {
                         stat.track.artists = vec![ArtistRef { id: String::new(), name: line.clone() }];
                     }
-                }
             }
 
             Ok(stats)

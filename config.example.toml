@@ -104,9 +104,12 @@ anthropic_version = "2023-06-01"
 #   claude-haiku-4-5 cheapest; noticeably weaker at taste reasoning
 model = "claude-opus-5"
 
-# Response cap. A 50-track structured payload is roughly 6–8k tokens, so the
-# default leaves ample headroom. Raise it if you generate very large playlists.
-max_tokens = 16000
+# Output cap. Sized for the streaming default below: a 50-track playlist is
+# oversampled to ~90 suggestions, each with a sentence of reasoning, which runs
+# well past 16k. Streaming removes the HTTP-timeout reason to keep this small.
+# If you set stream = false, lower this to ~16000 so a long turn cannot outlive
+# the request timeout.
+max_tokens = 64000
 
 # Reasoning depth and total token spend: "low" | "medium" | "high" | "xhigh" | "max".
 # Curation benefits from real deliberation; "high" is the sweet spot, "low" is
@@ -157,7 +160,9 @@ max_retries  = 4
 #
 # [[llm.fallbacks]]
 # provider    = "gemini"
-# model       = "gemini-3-pro"
+# # `-latest` tracks the current Pro model. A dated id goes stale: gemini-2.5-pro
+# # is already closed to new keys, and a fallback that 404s is worse than none.
+# model       = "gemini-pro-latest"
 # api_key_env = "GEMINI_API_KEY"
 #
 # Fully local, no key and no network egress. Needs a model large enough to

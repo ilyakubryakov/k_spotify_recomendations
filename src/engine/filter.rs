@@ -91,15 +91,15 @@ impl FilterContext<'_> {
     }
 
     fn check_scalars(&self, track: &Track) -> Option<RejectReason> {
-        if let Some(min) = self.filters.min_popularity {
-            if track.popularity < min {
-                return Some(RejectReason::Filtered("below minimum popularity"));
-            }
+        if let Some(min) = self.filters.min_popularity
+            && track.popularity < min
+        {
+            return Some(RejectReason::Filtered("below minimum popularity"));
         }
-        if let Some(max) = self.filters.max_popularity {
-            if track.popularity > max {
-                return Some(RejectReason::Filtered("above maximum popularity"));
-            }
+        if let Some(max) = self.filters.max_popularity
+            && track.popularity > max
+        {
+            return Some(RejectReason::Filtered("above maximum popularity"));
         }
         if self.filters.allow_explicit == Some(false) && track.explicit {
             return Some(RejectReason::Filtered("explicit"));

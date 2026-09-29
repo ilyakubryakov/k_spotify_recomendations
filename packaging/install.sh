@@ -27,15 +27,15 @@ SCHEDULE=""
 ADD_PATH=0
 UNINSTALL=0
 FORCE_SOURCE=0
-REPO="${SPOTIFY_AGENT_REPO:-balancy/spotify-agent}"
+REPO="${SPOTIFY_AGENT_REPO:-ilyakubryakov/k_spotify_recomendations}"
 # "latest" resolves through GitHub's /releases/latest/download/ redirect;
 # anything else is treated as a tag.
 VERSION="${SPOTIFY_AGENT_VERSION:-latest}"
 ASSET_BASE="${SPOTIFY_AGENT_ASSET_BASE:-}"
 SKIP_VERIFY="${SPOTIFY_AGENT_SKIP_VERIFY:-0}"
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 
 # --------------------------------------------------------------------------
 # output helpers
@@ -155,7 +155,12 @@ remove_schedule() {
 if [ "$UNINSTALL" = 1 ]; then
     say "Uninstalling $APP…"
     remove_schedule
-    [ -f "$TARGET" ] && rm -f "$TARGET" && ok "removed $TARGET" || info "no binary at $TARGET"
+    if [ -f "$TARGET" ]; then
+        rm -f "$TARGET"
+        ok "removed $TARGET"
+    else
+        info "no binary at $TARGET"
+    fi
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.config/fish/config.fish"; do
         [ -f "$rc" ] || continue
         if grep -q "# added by $APP installer" "$rc" 2>/dev/null; then
@@ -277,7 +282,8 @@ install_from_source() {
     if [ ! -f "$REPO_DIR/Cargo.toml" ]; then
         # Piped into `sh`, there is no checkout to build from.
         info "no source checkout here; to build from source:"
-        info "  git clone https://github.com/$REPO && cd $APP && sh packaging/install.sh --from-source"
+        repo_dir="${REPO##*/}"
+        info "  git clone https://github.com/$REPO && cd $repo_dir && sh packaging/install.sh --from-source"
         return 1
     fi
 
@@ -295,7 +301,11 @@ install_from_source() {
     # resulting binary portable.
     if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1 && ! command -v clang >/dev/null 2>&1; then
         warn "no C compiler found; SQLite is compiled from source."
-        [ "$PLATFORM" = macos ] && say "    xcode-select --install" || say "    install your distro's build-essential / base-devel package"
+        if [ "$PLATFORM" = macos ]; then
+            say "    xcode-select --install"
+        else
+            say "    install your distro's build-essential / base-devel package"
+        fi
         return 1
     fi
 
@@ -332,8 +342,11 @@ ok "installed $TARGET"
 mkdir -p "$CONFIG_DIR" "$DATA_DIR"
 chmod 700 "$CONFIG_DIR" "$DATA_DIR" 2>/dev/null || true
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
-    "$TARGET" config init >/dev/null 2>&1 && ok "wrote $CONFIG_DIR/config.toml" || \
+    if "$TARGET" config init >/dev/null 2>&1; then
+        ok "wrote $CONFIG_DIR/config.toml"
+    else
         warn "could not write a starter config; run '$APP config init' yourself"
+    fi
 fi
 
 # --------------------------------------------------------------------------
@@ -382,7 +395,7 @@ schedule_linux() {
     cat > "$SYSTEMD_DIR/$APP.service" <<UNIT
 [Unit]
 Description=spotify-agent — generate an AI-curated playlist
-Documentation=https://github.com/balancy/spotify-agent
+Documentation=https://github.com/ilyakubryakov/k_spotify_recomendations
 # A laptop that is offline at 07:30 should run when it reconnects, not fail.
 After=network-online.target
 

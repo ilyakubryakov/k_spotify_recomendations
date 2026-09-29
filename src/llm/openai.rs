@@ -240,13 +240,12 @@ fn parse_response(provider: Provider, value: &Value) -> Result<Completion> {
     if let Some(refusal) = message
         .and_then(|m| m.get("refusal"))
         .and_then(Value::as_str)
+        && !refusal.is_empty()
     {
-        if !refusal.is_empty() {
-            return Err(AgentError::ModelRefusal {
-                category: "refusal".into(),
-                explanation: refusal.to_string(),
-            });
-        }
+        return Err(AgentError::ModelRefusal {
+            category: "refusal".into(),
+            explanation: refusal.to_string(),
+        });
     }
 
     Ok(Completion {

@@ -147,19 +147,19 @@ impl Authenticator {
 
     /// Return a valid access token, refreshing if needed.
     pub async fn access_token(&self) -> Result<Secret> {
-        if let Some(t) = self.tokens.read().await.as_ref() {
-            if t.is_fresh() {
-                return Ok(t.access_token.clone());
-            }
+        if let Some(t) = self.tokens.read().await.as_ref()
+            && t.is_fresh()
+        {
+            return Ok(t.access_token.clone());
         }
 
         // Serialise: whoever wins the lock refreshes, the rest observe the
         // fresh token and return immediately.
         let _guard = self.refresh_lock.lock().await;
-        if let Some(t) = self.tokens.read().await.as_ref() {
-            if t.is_fresh() {
-                return Ok(t.access_token.clone());
-            }
+        if let Some(t) = self.tokens.read().await.as_ref()
+            && t.is_fresh()
+        {
+            return Ok(t.access_token.clone());
         }
 
         let current = self
@@ -229,10 +229,8 @@ impl Authenticator {
         let authorize_url = self.authorize_url(&challenge, &state);
 
         println!("\nAuthorise spotify-agent in your browser:\n\n  {authorize_url}\n");
-        if !no_browser {
-            if let Err(e) = open_browser(&authorize_url) {
-                tracing::debug!(error = %e, "could not launch a browser; use the URL above");
-            }
+        if !no_browser && let Err(e) = open_browser(&authorize_url) {
+            tracing::debug!(error = %e, "could not launch a browser; use the URL above");
         }
         println!("Waiting for the redirect on {} …", self.cfg.redirect_uri());
 

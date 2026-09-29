@@ -423,19 +423,19 @@ async fn parse_stream(
                 Some("content_block_start") => {
                     // A `fallback` block means a refusal was rescued by a
                     // fallback model mid-turn.
-                    if let Some(block) = event.get("content_block") {
-                        if block.get("type").and_then(Value::as_str) == Some("fallback") {
-                            let to = block
-                                .get("to")
-                                .and_then(|t| t.get("model"))
-                                .and_then(Value::as_str)
-                                .unwrap_or("fallback")
-                                .to_string();
-                            if let Some(l) = &listener {
-                                l(StreamEvent::FellBackTo(to.clone()));
-                            }
-                            tracing::warn!(model = %to, "request fell back after a refusal");
+                    if let Some(block) = event.get("content_block")
+                        && block.get("type").and_then(Value::as_str) == Some("fallback")
+                    {
+                        let to = block
+                            .get("to")
+                            .and_then(|t| t.get("model"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("fallback")
+                            .to_string();
+                        if let Some(l) = &listener {
+                            l(StreamEvent::FellBackTo(to.clone()));
                         }
+                        tracing::warn!(model = %to, "request fell back after a refusal");
                     }
                 }
                 Some("message_delta") => {
@@ -446,10 +446,10 @@ async fn parse_stream(
                     {
                         stop_reason = reason.to_string();
                     }
-                    if let Some(details) = event.get("delta").and_then(|d| d.get("stop_details")) {
-                        if !details.is_null() {
-                            stop_details = Some(details.clone());
-                        }
+                    if let Some(details) = event.get("delta").and_then(|d| d.get("stop_details"))
+                        && !details.is_null()
+                    {
+                        stop_details = Some(details.clone());
                     }
                     output_tokens = usage_field(&event, "output_tokens").max(output_tokens);
                 }

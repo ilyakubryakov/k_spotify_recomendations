@@ -44,7 +44,7 @@ param(
     [switch]   $Uninstall,
     [switch]   $FromSource,
     [string]   $AssetBase = $env:SPOTIFY_AGENT_ASSET_BASE,
-    [string]   $Repo      = $(if ($env:SPOTIFY_AGENT_REPO) { $env:SPOTIFY_AGENT_REPO } else { 'balancy/spotify-agent' }),
+    [string]   $Repo      = $(if ($env:SPOTIFY_AGENT_REPO) { $env:SPOTIFY_AGENT_REPO } else { 'ilyakubryakov/k_spotify_recomendations' }),
     [string]   $Version   = $(if ($env:SPOTIFY_AGENT_VERSION) { $env:SPOTIFY_AGENT_VERSION } else { 'latest' }),
     [switch]   $NoVerify
 )
@@ -295,7 +295,8 @@ function Install-FromSource {
     if (-not $RepoDir -or -not (Test-Path (Join-Path $RepoDir 'Cargo.toml'))) {
         # Piped through `iex`, there is no checkout to build from.
         Write-Info 'no source checkout here; to build from source:'
-        Write-Info "  git clone https://github.com/$Repo; cd $App; .\packaging\install.ps1 -FromSource"
+        $repoDir = ($Repo -split '/')[-1]
+        Write-Info "  git clone https://github.com/$Repo; cd $repoDir; .\packaging\install.ps1 -FromSource"
         return $false
     }
 

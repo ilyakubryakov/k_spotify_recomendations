@@ -71,10 +71,10 @@ impl Lang {
     /// Best guess from the environment, for the first-run default.
     pub fn from_environment() -> Option<Self> {
         for var in ["LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"] {
-            if let Ok(value) = std::env::var(var) {
-                if let Some(lang) = Lang::parse(&value) {
-                    return Some(lang);
-                }
+            if let Ok(value) = std::env::var(var)
+                && let Some(lang) = Lang::parse(&value)
+            {
+                return Some(lang);
             }
         }
         None

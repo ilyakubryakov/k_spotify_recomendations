@@ -71,10 +71,10 @@ pub async fn send(cfg: &NotificationConfig, http: &reqwest::Client, notification
         return;
     }
 
-    if cfg.desktop {
-        if let Err(e) = desktop(notification) {
-            tracing::debug!(error = %e, "desktop notification unavailable");
-        }
+    if cfg.desktop
+        && let Err(e) = desktop(notification)
+    {
+        tracing::debug!(error = %e, "desktop notification unavailable");
     }
 
     if let Err(e) = webhook(cfg, http, notification).await {

@@ -116,12 +116,12 @@ fn m3u8(name: &str, tracks: &[ExportTrack]) -> String {
         if !track.album.is_empty() {
             out.push_str(&format!("#EXTALB:{}\n", sanitize_line(&track.album)));
         }
-        if let Some(reason) = &track.reason {
-            if !reason.trim().is_empty() {
-                // A comment, so players ignore it but the rationale survives
-                // in the exported file.
-                out.push_str(&format!("# why: {}\n", sanitize_line(reason)));
-            }
+        if let Some(reason) = &track.reason
+            && !reason.trim().is_empty()
+        {
+            // A comment, so players ignore it but the rationale survives
+            // in the exported file.
+            out.push_str(&format!("# why: {}\n", sanitize_line(reason)));
         }
         out.push_str(&track.url());
         out.push('\n');

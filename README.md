@@ -36,17 +36,17 @@ No root, no package manager, nothing outside your home directory.
 **Linux / macOS**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/balancy/spotify-agent/main/packaging/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ilyakubryakov/k_spotify_recomendations/main/packaging/install.sh | sh
 ```
 
 **Windows** — a normal PowerShell prompt, *not* an elevated one:
 
 ```powershell
-irm https://raw.githubusercontent.com/balancy/spotify-agent/main/packaging/install.ps1 | iex
+irm https://raw.githubusercontent.com/ilyakubryakov/k_spotify_recomendations/main/packaging/install.ps1 | iex
 ```
 
 Both download a prebuilt binary from
-[Releases](https://github.com/balancy/spotify-agent/releases) and verify it
+[Releases](https://github.com/ilyakubryakov/k_spotify_recomendations/releases) and verify it
 against the release's `SHA256SUMS` before installing anything. Re-run to
 upgrade. Passing options through the pipe:
 
@@ -80,7 +80,7 @@ sudo apt install build-essential     # Debian/Ubuntu
 sudo pacman -S base-devel            # Arch
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-git clone https://github.com/balancy/spotify-agent && cd spotify-agent
+git clone https://github.com/ilyakubryakov/k_spotify_recomendations && cd k_spotify_recomendations
 sh packaging/install.sh --from-source --add-path
 ```
 
@@ -89,7 +89,7 @@ sh packaging/install.sh --from-source --add-path
 xcode-select --install
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-git clone https://github.com/balancy/spotify-agent && cd spotify-agent
+git clone https://github.com/ilyakubryakov/k_spotify_recomendations && cd k_spotify_recomendations
 sh packaging/install.sh --from-source --add-path
 ```
 
@@ -100,7 +100,7 @@ winget install Microsoft.VisualStudio.2022.BuildTools `
   --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 winget install Rustlang.Rustup
 
-git clone https://github.com/balancy/spotify-agent; cd spotify-agent
+git clone https://github.com/ilyakubryakov/k_spotify_recomendations; cd k_spotify_recomendations
 .\packaging\install.ps1 -FromSource
 ```
 
@@ -293,8 +293,8 @@ cargo clippy --all-targets
 The HTTP layers are tested against a scripted mock server in `tests/`, which
 pins each provider's exact request shape — the failure mode when one drifts is
 otherwise a 400 at 3am in a cron run. `tests/packaging.rs` checks the installer
-scripts, which nothing else type-checks. `CLAUDE.md` holds the architecture
-notes and the decisions that aren't obvious from the code.
+scripts, which nothing else type-checks. `docs/architecture.md` covers the
+layering and the decisions that aren't obvious from the code.
 
 CI runs fmt, clippy, the suite on all three platforms, an MSRV check, installer
 linting (shellcheck + PSScriptAnalyzer) and `cargo audit`. Tagging `v*` builds

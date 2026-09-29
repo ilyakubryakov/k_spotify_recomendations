@@ -995,17 +995,15 @@ async fn sync_library(
 ) -> Result<SyncReport> {
     let started = Instant::now();
 
-    if !force {
-        if let Some(last) = storage.last_sync().await? {
-            let age = Utc::now().signed_duration_since(last);
-            let min = chrono::Duration::minutes(config.storage.sync_min_interval_mins as i64);
-            if age < min {
-                return Ok(SyncReport {
-                    skipped: true,
-                    duration: started.elapsed(),
-                    ..Default::default()
-                });
-            }
+    if !force && let Some(last) = storage.last_sync().await? {
+        let age = Utc::now().signed_duration_since(last);
+        let min = chrono::Duration::minutes(config.storage.sync_min_interval_mins as i64);
+        if age < min {
+            return Ok(SyncReport {
+                skipped: true,
+                duration: started.elapsed(),
+                ..Default::default()
+            });
         }
     }
 

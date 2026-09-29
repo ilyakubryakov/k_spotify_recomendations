@@ -2,7 +2,13 @@
 name          = "spotify-agent"
 version       = "0.1.0"
 edition       = "2024"
-rust-version  = "1.85"
+# The real floor, verified by the MSRV job -- not a guess. Edition 2024 alone
+# would need only 1.85; the dependency tree raises it:
+#   1.87  yoke-derive (via url/idna) uses `inherent_str_constructors`
+#   1.88  time >= 0.3.47, which is the version that fixes RUSTSEC-2026-0009
+# Taking the security fix is worth the bump: this ships as prebuilt binaries,
+# so the MSRV constrains maintainers, not users.
+rust-version  = "1.88"
 description   = "Autonomous AI music curation agent: Spotify + Anthropic Claude"
 license       = "MIT"
 readme        = "README.md"

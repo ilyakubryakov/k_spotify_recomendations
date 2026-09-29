@@ -205,8 +205,13 @@ pub struct BackendConfig {
 
     pub model: String,
 
-    /// Non-streaming responses must fit under the HTTP timeout; 16k is the
-    /// documented safe default and is ample for a 100-track payload.
+    /// Output cap.
+    ///
+    /// Sized for the streaming default: a 50-track playlist is oversampled to
+    /// ~90 suggestions, each carrying a sentence of reasoning, which runs well
+    /// past 16k output tokens. Streaming removes the HTTP-timeout reason to
+    /// keep this small. If you set `stream = false`, lower it to ~16000 so a
+    /// long turn cannot outlive the request timeout.
     pub max_tokens: u32,
 
     /// Anthropic only: `low` | `medium` | `high` | `xhigh` | `max`. Controls
@@ -239,7 +244,7 @@ impl Default for BackendConfig {
             base_url: None,
             anthropic_version: "2023-06-01".into(),
             model: "claude-opus-5".into(),
-            max_tokens: 16_000,
+            max_tokens: 64_000,
             effort: Effort::High,
             thinking: ThinkingMode::Adaptive,
             thinking_display: ThinkingDisplay::Summarized,
@@ -279,10 +284,10 @@ impl BackendConfig {
     /// `Ok(None)` is a valid outcome for providers that do not need one — a
     /// local Ollama is the normal case.
     pub fn resolve_api_key(&self) -> Result<Option<Secret>> {
-        if let Some(key) = &self.api_key {
-            if !key.is_empty() {
-                return Ok(Some(key.clone()));
-            }
+        if let Some(key) = &self.api_key
+            && !key.is_empty()
+        {
+            return Ok(Some(key.clone()));
         }
         let var = self.key_env();
         match std::env::var(&var) {
@@ -320,12 +325,12 @@ impl BackendConfig {
                  use adaptive thinking with a lower effort instead"
             )));
         }
-        if let Some(url) = &self.base_url {
-            if url::Url::parse(url).is_err() {
-                return Err(AgentError::config(format!(
-                    "{context}.base_url is not a valid URL"
-                )));
-            }
+        if let Some(url) = &self.base_url
+            && url::Url::parse(url).is_err()
+        {
+            return Err(AgentError::config(format!(
+                "{context}.base_url is not a valid URL"
+            )));
         }
         Ok(())
     }
@@ -902,15 +907,15 @@ impl Config {
     ///   * well-known names (`ANTHROPIC_API_KEY`, `SPOTIFY_CLIENT_ID`, …)
     ///   * `SPOTIFY_AGENT__<SECTION>__<FIELD>` for everything else
     fn apply_env(&mut self) -> Result<()> {
-        if let Ok(v) = std::env::var("SPOTIFY_CLIENT_ID") {
-            if !v.trim().is_empty() {
-                self.spotify.client_id = Some(v.trim().to_string());
-            }
+        if let Ok(v) = std::env::var("SPOTIFY_CLIENT_ID")
+            && !v.trim().is_empty()
+        {
+            self.spotify.client_id = Some(v.trim().to_string());
         }
-        if let Ok(v) = std::env::var("SPOTIFY_CLIENT_SECRET") {
-            if !v.trim().is_empty() {
-                self.spotify.client_secret = Some(Secret::new(v.trim()));
-            }
+        if let Ok(v) = std::env::var("SPOTIFY_CLIENT_SECRET")
+            && !v.trim().is_empty()
+        {
+            self.spotify.client_secret = Some(Secret::new(v.trim()));
         }
         if let Ok(v) = std::env::var("SPOTIFY_REDIRECT_URI") {
             self.apply_redirect_uri(&v)?;
@@ -1069,12 +1074,12 @@ impl Config {
         for (index, backend) in self.llm.fallbacks.iter().enumerate() {
             backend.validate(&format!("llm.fallbacks[{index}]"))?;
         }
-        if let Some(market) = &self.spotify.market {
-            if market.len() != 2 || !market.chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(AgentError::config(
-                    "spotify.market must be an ISO-3166-1 alpha-2 code, e.g. \"DE\"",
-                ));
-            }
+        if let Some(market) = &self.spotify.market
+            && (market.len() != 2 || !market.chars().all(|c| c.is_ascii_alphabetic()))
+        {
+            return Err(AgentError::config(
+                "spotify.market must be an ISO-3166-1 alpha-2 code, e.g. \"DE\"",
+            ));
         }
         if self.defaults.exclude_recent_days == 0 && self.storage.retain_recommendations_days != 0 {
             // Pruning the recommendation log is what makes the agent forget;

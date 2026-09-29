@@ -1,8 +1,8 @@
 /target
 
-# Local agent/editor state. The architecture notes live in the committed
-# CLAUDE.md at the repo root so a fresh clone still gets them.
+# Local agent/editor state, kept out of the repo.
 /.claude/
+/CLAUDE.md
 /.vscode/
 /.idea/
 
