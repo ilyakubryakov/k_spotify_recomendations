@@ -91,8 +91,18 @@ concurrency = 4
 [claude]
 # ---------------------------------------------------------------------------
 
-# Prefer the environment. Uncomment only if you accept a key on disk.
-# api_key = "sk-ant-…"
+# TWO DIFFERENT FIELDS -- this catches people out:
+#   api_key      the key itself
+#   api_key_env  the NAME of an environment variable holding the key
+# Putting a key in api_key_env makes the agent look for a variable *called*
+# "sk-ant-..." and find nothing. The loader now rejects that outright.
+#
+# Simplest setup: paste the key here and keep this file at mode 0600 (the
+# agent warns if it is readable by anyone else). That also works for
+# scheduled background runs, which do not inherit your shell environment.
+# api_key = "sk-ant-..."
+#
+# Or leave the key out of the file and export it instead:
 api_key_env = "ANTHROPIC_API_KEY"
 
 base_url          = "https://api.anthropic.com"

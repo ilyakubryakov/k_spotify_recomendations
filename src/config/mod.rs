@@ -304,6 +304,26 @@ impl BackendConfig {
     }
 
     fn validate(&self, context: &str) -> Result<()> {
+        // `api_key_env` is the NAME of an environment variable, not the key.
+        // Pasting the key into it is an easy and silent mistake: the lookup
+        // simply finds nothing and the backend is dropped as "no credentials",
+        // with no hint that the key was right there in the file.
+        if let Some(var) = &self.api_key_env {
+            let looks_like_a_name = !var.is_empty()
+                && var
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && var.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !looks_like_a_name {
+                return Err(AgentError::config(format!(
+                    "{context}.api_key_env must be the NAME of an environment variable \
+                     (e.g. \"ANTHROPIC_API_KEY\"), but it looks like a key itself. \
+                     Put the key in `{context}.api_key` instead, or set the variable and \
+                     name it here."
+                )));
+            }
+        }
         if self.max_tokens < 1024 {
             return Err(AgentError::config(format!(
                 "{context}.max_tokens must be at least 1024"
@@ -1163,6 +1183,38 @@ mod tests {
     #[test]
     fn defaults_validate() {
         assert!(with_builtin_presets().validate().is_ok());
+    }
+
+    #[test]
+    fn a_key_pasted_into_api_key_env_is_caught() {
+        // The field takes a variable NAME; a key there fails silently at
+        // lookup time, which is a miserable thing to debug.
+        let mut cfg = with_builtin_presets();
+        cfg.claude.api_key_env = Some("sk-ant-api03-abcdef".into());
+        let error = cfg.validate().expect_err("should be rejected");
+        let rendered = error.to_string();
+        assert!(rendered.contains("api_key_env"), "{rendered}");
+        assert!(rendered.contains("api_key"), "should point at the right field: {rendered}");
+
+        // A real variable name is fine.
+        cfg.claude.api_key_env = Some("ANTHROPIC_API_KEY".into());
+        assert!(cfg.validate().is_ok());
+
+        // So is leaving it unset.
+        cfg.claude.api_key_env = None;
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn a_gemini_style_key_in_api_key_env_is_caught_too() {
+        let mut cfg = with_builtin_presets();
+        cfg.llm.fallbacks = vec![BackendConfig {
+            provider: Provider::Gemini,
+            api_key_env: Some("AQ.Ab8RN6LHyH1GSc6G2XUVDonXyYBvD1mlWq".into()),
+            ..Default::default()
+        }];
+        let error = cfg.validate().expect_err("should be rejected");
+        assert!(error.to_string().contains("llm.fallbacks[0].api_key_env"), "{error}");
     }
 
     #[test]
